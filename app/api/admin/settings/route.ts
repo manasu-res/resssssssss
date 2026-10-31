@@ -12,6 +12,7 @@ const settingsSchema = z.object({
   gstin: z.string().nullable().optional(),
   tax_percent: z.number().min(0).max(100).default(5),
   bill_footer: z.string().default('Thank you! Visit again.'),
+  paper_width: z.enum(['80mm', '58mm']).default('80mm'),
 });
 
 const DEFAULT_SETTINGS = {
@@ -22,10 +23,11 @@ const DEFAULT_SETTINGS = {
   gstin: '29AABCM8291Q1ZP',
   tax_percent: 5,
   bill_footer: 'Thank you for dining at Manasu! Visit again.',
+  paper_width: '80mm',
 };
 
 export async function GET() {
-  const { errorResponse } = await verifyStaffApiRoute(['owner']);
+  const { errorResponse } = await verifyStaffApiRoute(['owner', 'waiter', 'kitchen']);
   if (errorResponse) return errorResponse;
 
   try {
@@ -57,7 +59,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { restaurant_name, address, phone, gstin, tax_percent, bill_footer } = parse.data;
+    const { restaurant_name, address, phone, gstin, tax_percent, bill_footer, paper_width } = parse.data;
     const serviceSupabase = createServiceRoleClient();
 
     const { data, error } = await (serviceSupabase as any)
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
         gstin: gstin || null,
         tax_percent,
         bill_footer,
+        paper_width: paper_width || '80mm',
         updated_at: new Date().toISOString(),
       })
       .select()

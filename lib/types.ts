@@ -88,15 +88,36 @@ export interface Order {
 
 export interface Bill {
   id: string;
-  bill_number: number;
-  table_id: string;
+  bill_number: number | string;
+  bill_no?: string;
+  session_id?: string;
+  table_id?: string;
   subtotal_paise: number;
+  subtotal?: number;
   tax_paise: number;
-  discount_paise: number;
+  tax_amount?: number;
+  discount_paise?: number;
   final_paise: number;
+  total?: number;
   payment_method: PaymentMethod;
   settled_by?: string | null;
+  created_by?: string | null;
   created_at: string;
-  table?: RestaurantTable;
-  items?: OrderItem[];
+  paid_at?: string;
+  table?: RestaurantTable | { table_number: string; label?: string };
+  items?: Array<{
+    id?: string;
+    item_name?: string;
+    name?: string;
+    name_snapshot?: string;
+    price_paise?: number;
+    price_snapshot?: number;
+    quantity: number;
+    notes?: string;
+    note?: string;
+  }>;
+  is_cancelled?: boolean;
+  cancelled_by?: string | null;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
 }
