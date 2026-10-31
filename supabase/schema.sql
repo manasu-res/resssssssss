@@ -459,18 +459,18 @@ ON CONFLICT (id) DO NOTHING;
 -- 5. Initial Menu Items (Prices in integer paise: 100 paise = ₹1)
 INSERT INTO public.menu_items (id, category_id, name, description, price, is_veg, is_available, sort_order)
 VALUES
-  ('m1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'Davangere Benne Dosa', 'Crisp butter dosa served with spicy potato palya and fresh coconut chutney', 9500, true, true, 1),
-  ('m1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'Thatte Idli with Crispy Vada', 'Steamed plate idli steeped in ghee podi with a crunchy medu vada', 8000, true, true, 2),
-  ('m1000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'Bisi Bele Bath', 'Slow-cooked spiced rice, lentils, and country vegetables tempered with pure ghee', 8500, true, true, 3),
-  ('m1000000-0000-0000-0000-000000000004', 'c1000000-0000-0000-0000-000000000001', 'Chow Chow Bath', 'Classic Bengaluru duo: spicy khara bath paired with sweet pineapple kesari bath', 9000, true, true, 4),
-  ('m1000000-0000-0000-0000-000000000005', 'c1000000-0000-0000-0000-000000000001', 'Degree Filter Coffee', 'Strong chicory-blended decoction frothed with whole milk in a brass davara', 3500, true, true, 5),
-  ('m1000000-0000-0000-0000-000000000006', 'c1000000-0000-0000-0000-000000000002', 'Kundapura Chicken Ghee Roast', 'Tender chicken tossed in Byadgi chilli paste and slow-roasted in desi ghee', 26000, false, true, 1),
-  ('m1000000-0000-0000-0000-000000000007', 'c1000000-0000-0000-0000-000000000002', 'Mutton Pepper Sukka', 'Slow-cooked local mutton with black pepper, curry leaves, and toasted coconut', 32000, false, true, 2),
-  ('m1000000-0000-0000-0000-000000000008', 'c1000000-0000-0000-0000-000000000002', 'Crispy Babycorn Pepper Fry', 'Fresh babycorn flash-fried with crushed black pepper and green chillies', 17000, true, true, 3),
-  ('m1000000-0000-0000-0000-000000000009', 'c1000000-0000-0000-0000-000000000002', 'Mushroom Ghee Roast', 'Button mushrooms sauteed in rich Mangalorean red masala and pure ghee', 21000, true, true, 4),
-  ('m1000000-0000-0000-0000-000000000010', 'c1000000-0000-0000-0000-000000000003', 'Shivaji Military Donne Biryani', 'Seeraga Samba rice infused with mint, coriander, and country chicken', 24000, false, true, 1),
-  ('m1000000-0000-0000-0000-000000000011', 'c1000000-0000-0000-0000-000000000003', 'Mutton Donne Biryani', 'Aromatic Donne Biryani layered with succulent tender mutton pieces', 31000, false, true, 2),
-  ('m1000000-0000-0000-0000-000000000012', 'c1000000-0000-0000-0000-000000000003', 'North Karnataka Jowar Roti Oota', 'Two hot jolada rotis with yennegai brinjal curry, jhunka, and shenga podi', 18000, true, true, 3)
+  ('a1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'Davangere Benne Dosa', 'Crisp butter dosa served with spicy potato palya and fresh coconut chutney', 9500, true, true, 1),
+  ('a1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'Thatte Idli with Crispy Vada', 'Steamed plate idli steeped in ghee podi with a crunchy medu vada', 8000, true, true, 2),
+  ('a1000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'Bisi Bele Bath', 'Slow-cooked spiced rice, lentils, and country vegetables tempered with pure ghee', 8500, true, true, 3),
+  ('a1000000-0000-0000-0000-000000000004', 'c1000000-0000-0000-0000-000000000001', 'Chow Chow Bath', 'Classic Bengaluru duo: spicy khara bath paired with sweet pineapple kesari bath', 9000, true, true, 4),
+  ('a1000000-0000-0000-0000-000000000005', 'c1000000-0000-0000-0000-000000000001', 'Degree Filter Coffee', 'Strong chicory-blended decoction frothed with whole milk in a brass davara', 3500, true, true, 5),
+  ('a1000000-0000-0000-0000-000000000006', 'c1000000-0000-0000-0000-000000000002', 'Kundapura Chicken Ghee Roast', 'Tender chicken tossed in Byadgi chilli paste and slow-roasted in desi ghee', 26000, false, true, 1),
+  ('a1000000-0000-0000-0000-000000000007', 'c1000000-0000-0000-0000-000000000002', 'Mutton Pepper Sukka', 'Slow-cooked local mutton with black pepper, curry leaves, and toasted coconut', 32000, false, true, 2),
+  ('a1000000-0000-0000-0000-000000000008', 'c1000000-0000-0000-0000-000000000002', 'Crispy Babycorn Pepper Fry', 'Fresh babycorn flash-fried with crushed black pepper and green chillies', 17000, true, true, 3),
+  ('a1000000-0000-0000-0000-000000000009', 'c1000000-0000-0000-0000-000000000002', 'Mushroom Ghee Roast', 'Button mushrooms sauteed in rich Mangalorean red masala and pure ghee', 21000, true, true, 4),
+  ('a1000000-0000-0000-0000-000000000010', 'c1000000-0000-0000-0000-000000000003', 'Shivaji Military Donne Biryani', 'Seeraga Samba rice infused with mint, coriander, and country chicken', 24000, false, true, 1),
+  ('a1000000-0000-0000-0000-000000000011', 'c1000000-0000-0000-0000-000000000003', 'Mutton Donne Biryani', 'Aromatic Donne Biryani layered with succulent tender mutton pieces', 31000, false, true, 2),
+  ('a1000000-0000-0000-0000-000000000012', 'c1000000-0000-0000-0000-000000000003', 'North Karnataka Jowar Roti Oota', 'Two hot jolada rotis with yennegai brinjal curry, jhunka, and shenga podi', 18000, true, true, 3)
 ON CONFLICT (id) DO NOTHING;
 
 -- 6. Initial Combos
@@ -483,8 +483,8 @@ ON CONFLICT (id) DO NOTHING;
 -- Combo Items Association
 INSERT INTO public.combo_items (combo_id, menu_item_id, quantity)
 VALUES
-  ('b1000000-0000-0000-0000-000000000001', 'm1000000-0000-0000-0000-000000000002', 1),
-  ('b1000000-0000-0000-0000-000000000001', 'm1000000-0000-0000-0000-000000000005', 1),
-  ('b1000000-0000-0000-0000-000000000002', 'm1000000-0000-0000-0000-000000000010', 1),
-  ('b1000000-0000-0000-0000-000000000002', 'm1000000-0000-0000-0000-000000000006', 1)
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 1),
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000005', 1),
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000010', 1),
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000006', 1)
 ON CONFLICT (combo_id, menu_item_id) DO NOTHING;

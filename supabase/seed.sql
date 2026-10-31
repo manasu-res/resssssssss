@@ -45,7 +45,7 @@ INSERT INTO public.menu_items (id, category_id, name, description, price, is_veg
 VALUES
   -- Category 1: Tiffins & Breakfast
   (
-    'm1000000-0000-0000-0000-000000000001',
+    'a1000000-0000-0000-0000-000000000001',
     'c1000000-0000-0000-0000-000000000001',
     'SAMPLE - Davangere Benne Dosa',
     'Crisp butter dosa served with spicy potato palya and fresh coconut chutney',
@@ -55,7 +55,7 @@ VALUES
     1
   ),
   (
-    'm1000000-0000-0000-0000-000000000002',
+    'a1000000-0000-0000-0000-000000000002',
     'c1000000-0000-0000-0000-000000000001',
     'SAMPLE - Thatte Idli with Crispy Vada',
     'Steamed plate idli steeped in ghee podi with a crunchy medu vada',
@@ -65,7 +65,7 @@ VALUES
     2
   ),
   (
-    'm1000000-0000-0000-0000-000000000003',
+    'a1000000-0000-0000-0000-000000000003',
     'c1000000-0000-0000-0000-000000000001',
     'SAMPLE - Bisi Bele Bath',
     'Slow-cooked spiced rice, lentils, and country vegetables tempered with pure ghee',
@@ -75,7 +75,7 @@ VALUES
     3
   ),
   (
-    'm1000000-0000-0000-0000-000000000004',
+    'a1000000-0000-0000-0000-000000000004',
     'c1000000-0000-0000-0000-000000000001',
     'SAMPLE - Chow Chow Bath',
     'Classic Bengaluru duo: spicy khara bath paired with sweet pineapple kesari bath',
@@ -85,7 +85,7 @@ VALUES
     4
   ),
   (
-    'm1000000-0000-0000-0000-000000000005',
+    'a1000000-0000-0000-0000-000000000005',
     'c1000000-0000-0000-0000-000000000001',
     'SAMPLE - Degree Filter Coffee',
     'Strong chicory-blended decoction frothed with whole milk in a brass davara',
@@ -97,7 +97,7 @@ VALUES
 
   -- Category 2: Starters & Roasts
   (
-    'm1000000-0000-0000-0000-000000000006',
+    'a1000000-0000-0000-0000-000000000006',
     'c1000000-0000-0000-0000-000000000002',
     'SAMPLE - Kundapura Chicken Ghee Roast',
     'Tender chicken tossed in Byadgi chilli paste and slow-roasted in desi ghee',
@@ -107,7 +107,7 @@ VALUES
     1
   ),
   (
-    'm1000000-0000-0000-0000-000000000007',
+    'a1000000-0000-0000-0000-000000000007',
     'c1000000-0000-0000-0000-000000000002',
     'SAMPLE - Mutton Pepper Sukka',
     'Slow-cooked local mutton with black pepper, curry leaves, and toasted coconut',
@@ -117,7 +117,7 @@ VALUES
     2
   ),
   (
-    'm1000000-0000-0000-0000-000000000008',
+    'a1000000-0000-0000-0000-000000000008',
     'c1000000-0000-0000-0000-000000000002',
     'SAMPLE - Crispy Babycorn Pepper Fry',
     'Fresh babycorn flash-fried with crushed black pepper and green chillies',
@@ -127,7 +127,7 @@ VALUES
     3
   ),
   (
-    'm1000000-0000-0000-0000-000000000009',
+    'a1000000-0000-0000-0000-000000000009',
     'c1000000-0000-0000-0000-000000000002',
     'SAMPLE - Mushroom Ghee Roast',
     'Button mushrooms sauteed in rich Mangalorean red masala and pure ghee',
@@ -139,7 +139,7 @@ VALUES
 
   -- Category 3: Biryani & Traditional Meals
   (
-    'm1000000-0000-0000-0000-000000000010',
+    'a1000000-0000-0000-0000-000000000010',
     'c1000000-0000-0000-0000-000000000003',
     'SAMPLE - Shivaji Military Donne Biryani',
     'Seeraga Samba rice infused with mint, coriander, and country chicken',
@@ -149,7 +149,7 @@ VALUES
     1
   ),
   (
-    'm1000000-0000-0000-0000-000000000011',
+    'a1000000-0000-0000-0000-000000000011',
     'c1000000-0000-0000-0000-000000000003',
     'SAMPLE - Mutton Donne Biryani',
     'Aromatic Donne Biryani layered with succulent tender mutton pieces',
@@ -159,7 +159,7 @@ VALUES
     2
   ),
   (
-    'm1000000-0000-0000-0000-000000000012',
+    'a1000000-0000-0000-0000-000000000012',
     'c1000000-0000-0000-0000-000000000003',
     'SAMPLE - North Karnataka Jowar Roti Oota',
     'Two hot jolada rotis with yennegai brinjal curry, jhunka, and shenga podi',
@@ -197,11 +197,11 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.combo_items (combo_id, menu_item_id, quantity)
 VALUES
   -- Breakfast combo items
-  ('b1000000-0000-0000-0000-000000000001', 'm1000000-0000-0000-0000-000000000002', 1),
-  ('b1000000-0000-0000-0000-000000000001', 'm1000000-0000-0000-0000-000000000005', 1),
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000002', 1),
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000005', 1),
   -- Biryani feast items
-  ('b1000000-0000-0000-0000-000000000002', 'm1000000-0000-0000-0000-000000000010', 1),
-  ('b1000000-0000-0000-0000-000000000002', 'm1000000-0000-0000-0000-000000000006', 1)
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000010', 1),
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000006', 1)
 ON CONFLICT (combo_id, menu_item_id) DO NOTHING;
 
 -- 5. Sample Dining Tables (6 Tables with long random unguessable tokens)
