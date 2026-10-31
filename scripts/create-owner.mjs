@@ -39,6 +39,27 @@ if (!supabaseUrl || !serviceRoleKey) {
 }
 
 const args = process.argv.slice(2);
+
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+\x1b[36mManasu Restaurant - Initial Owner Account Creation\x1b[0m
+
+Usage:
+  npm run create-owner -- [email] [password] [name]
+  or
+  node scripts/create-owner.mjs [email] [password] [name]
+
+Examples:
+  npm run create-owner
+  node scripts/create-owner.mjs owner@manasu.com ManasuOwner2026! "Anand Kumar"
+
+Required Environment (.env.local):
+  NEXT_PUBLIC_SUPABASE_URL
+  SUPABASE_SERVICE_ROLE_KEY
+`);
+  process.exit(0);
+}
+
 const email = (args[0] || 'owner@manasu.com').trim().toLowerCase();
 const password = args[1] || 'ManasuOwner2026!';
 const name = args[2] || 'Anand Kumar (Owner)';
