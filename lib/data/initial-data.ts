@@ -269,12 +269,12 @@ export const INITIAL_COMBOS: Combo[] = [
 ];
 
 export const INITIAL_TABLES: RestaurantTable[] = [
-  { id: 'table-01', table_number: 'Table 1', seat_capacity: 2, active_token: 'tbl-manasu-01', status: 'vacant', is_active: true, created_at: new Date().toISOString() },
+  { id: 'table-01', table_number: 'Table 1', seat_capacity: 2, active_token: 'tbl-manasu-01', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
   { id: 'table-02', table_number: 'Table 2', seat_capacity: 4, active_token: 'tbl-manasu-02', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
-  { id: 'table-03', table_number: 'Table 3', seat_capacity: 4, active_token: 'tbl-manasu-03', status: 'vacant', is_active: true, created_at: new Date().toISOString() },
+  { id: 'table-03', table_number: 'Table 3', seat_capacity: 4, active_token: 'tbl-manasu-03', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
   { id: 'table-04', table_number: 'Table 4', seat_capacity: 6, active_token: 'tbl-manasu-04', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
-  { id: 'table-05', table_number: 'Table 5', seat_capacity: 4, active_token: 'tbl-manasu-05', status: 'vacant', is_active: true, created_at: new Date().toISOString() },
-  { id: 'table-06', table_number: 'Table 6', seat_capacity: 8, active_token: 'tbl-manasu-06', status: 'vacant', is_active: true, created_at: new Date().toISOString() },
+  { id: 'table-05', table_number: 'Table 5', seat_capacity: 4, active_token: 'tbl-manasu-05', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
+  { id: 'table-06', table_number: 'Table 6', seat_capacity: 8, active_token: 'tbl-manasu-06', status: 'occupied', is_active: true, created_at: new Date().toISOString() },
 ];
 
 export const INITIAL_STAFF: StaffProfile[] = [

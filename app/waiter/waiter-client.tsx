@@ -180,6 +180,9 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   // Previous pending count to detect new incoming orders for chime
   const prevPendingCountRef = useRef<number>(0);
 
+  // Preserve tables that were opened in this browser session so polling never flips them back to 'Free'
+  const locallyOpenedTablesRef = useRef<Record<string, number>>({});
+
   const fetchTables = useCallback(async () => {
     try {
       const res = await fetch('/api/waiter/tables');
@@ -188,7 +191,17 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         return;
       }
       const data = await res.json();
-      const loadedTables: WaiterTable[] = data.tables || [];
+      const rawTables: WaiterTable[] = data.tables || [];
+      const loadedTables = rawTables.map(t => {
+        if (locallyOpenedTablesRef.current[t.id] && t.state === 'Free') {
+          return {
+            ...t,
+            state: 'Open' as const,
+            opened_at: t.opened_at || new Date().toISOString(),
+          };
+        }
+        return t;
+      });
       setTables(loadedTables);
 
       // Total pending orders across all tables
@@ -292,6 +305,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   // Table Session Actions
   const handleOpenTable = async (tableId: string) => {
+    locallyOpenedTablesRef.current[tableId] = Date.now();
     // Optimistic UI update
     setTables(prev =>
       prev.map(t =>
@@ -313,6 +327,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   };
 
   const handleOpenAndTakeOrder = async (tableId: string) => {
+    locallyOpenedTablesRef.current[tableId] = Date.now();
     // Optimistic UI update
     setTables(prev =>
       prev.map(t =>
@@ -338,6 +353,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   const handleVacateTable = async (tableId: string) => {
     if (!confirm('Vacate this table and clear active session?')) return;
+    delete locallyOpenedTablesRef.current[tableId];
     // Optimistic UI update
     setTables(prev =>
       prev.map(t =>

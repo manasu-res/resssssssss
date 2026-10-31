@@ -30,8 +30,10 @@ class RestaurantStore {
   public sessions: Array<{ id: string; table_id: string; status: 'open' | 'billed' | 'closed'; opened_at: string; closed_at?: string }> = [
     { id: 'sess-01', table_id: 'table-01', status: 'open', opened_at: new Date().toISOString() },
     { id: 'sess-02', table_id: 'table-02', status: 'open', opened_at: new Date().toISOString() },
+    { id: 'sess-03', table_id: 'table-03', status: 'open', opened_at: new Date().toISOString() },
     { id: 'sess-04', table_id: 'table-04', status: 'open', opened_at: new Date().toISOString() },
-    // Table 3 has NO open session by default to test read-only mode!
+    { id: 'sess-05', table_id: 'table-05', status: 'open', opened_at: new Date().toISOString() },
+    { id: 'sess-06', table_id: 'table-06', status: 'open', opened_at: new Date().toISOString() },
   ];
   public orders: Order[] = [];
   public orderItems: OrderItem[] = [];
