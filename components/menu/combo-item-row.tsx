@@ -49,44 +49,46 @@ export function ComboItemRow({
 
   return (
     <div className={`py-3 border-b border-rule/40 last:border-b-0 ${!isAvailable ? 'opacity-60' : ''}`}>
-      <div className="flex items-baseline justify-between gap-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size="sm" />
-          <span className={`font-medium text-sm text-ink truncate leading-tight ${!isAvailable ? 'line-through text-ink-muted' : ''}`}>
+      <div className="flex items-start justify-between gap-1.5 sm:gap-2">
+        <div className="flex items-start gap-1.5 min-w-0 flex-1">
+          <div className="pt-0.5 shrink-0">
+            <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size="sm" />
+          </div>
+          <span className={`font-medium text-sm md:text-base text-ink leading-snug break-words ${!isAvailable ? 'line-through text-ink-muted' : ''}`}>
             {combo.name}
           </span>
         </div>
 
-        <div className="flex-1 border-b border-dotted border-rule/60 mx-1.5 mb-1 shrink min-w-[12px]" />
+        <div className="hidden sm:block flex-1 border-b border-dotted border-rule/60 mx-1.5 mb-1.5 shrink min-w-[12px]" />
 
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="font-medium text-sm text-ink tabular-nums">
+        <div className="flex items-center gap-2 shrink-0 pt-0.5">
+          <span className="font-semibold text-sm md:text-base text-ink tabular-nums whitespace-nowrap">
             {formatRupees(pricePaise)}
           </span>
 
           {!readOnly && (
             <>
               {!isAvailable ? (
-                <span className="px-2 py-0.5 text-[11px] font-medium border border-rule text-ink-muted bg-paper-subtle rounded-sm uppercase tracking-wider">
+                <span className="px-2 py-1 text-[11px] font-medium border border-rule text-ink-muted bg-paper-subtle rounded-sm uppercase tracking-wider">
                   Sold out
                 </span>
               ) : quantityInCart > 0 ? (
-                <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-7">
+                <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-9 sm:h-7">
                   <button
                     type="button"
                     onClick={onRemove}
-                    className="w-6 h-full flex items-center justify-center text-ink text-sm font-semibold hover:bg-paper-subtle active:bg-paper-subtle"
+                    className="w-8 sm:w-6 h-full flex items-center justify-center text-ink text-base sm:text-sm font-semibold hover:bg-paper-subtle active:bg-paper-subtle"
                     aria-label={`Decrease quantity of ${combo.name}`}
                   >
                     -
                   </button>
-                  <span className="w-5 text-center text-xs font-semibold tabular-nums text-ink">
+                  <span className="w-6 sm:w-5 text-center text-xs font-semibold tabular-nums text-ink">
                     {quantityInCart}
                   </span>
                   <button
                     type="button"
                     onClick={onAdd}
-                    className="w-6 h-full flex items-center justify-center text-ink text-sm font-semibold hover:bg-paper-subtle active:bg-paper-subtle"
+                    className="w-8 sm:w-6 h-full flex items-center justify-center text-ink text-base sm:text-sm font-semibold hover:bg-paper-subtle active:bg-paper-subtle"
                     aria-label={`Increase quantity of ${combo.name}`}
                   >
                     +
@@ -96,7 +98,7 @@ export function ComboItemRow({
                 <button
                   type="button"
                   onClick={onAdd}
-                  className="h-7 px-2.5 border border-ink/40 text-xs font-medium rounded-sm bg-white text-ink hover:border-chilli hover:text-chilli active:bg-paper-subtle transition-colors"
+                  className="min-h-[36px] sm:min-h-0 sm:h-7 px-3 sm:px-2.5 border border-ink/40 text-xs font-semibold rounded-sm bg-white text-ink hover:border-chilli hover:text-chilli active:bg-paper-subtle transition-colors shadow-none"
                 >
                   Add
                 </button>
@@ -107,7 +109,7 @@ export function ComboItemRow({
       </div>
 
       {combo.description && (
-        <p className="text-[12px] text-ink-muted leading-normal mt-0.5 pl-5 pr-16 line-clamp-2">
+        <p className="text-[12px] md:text-xs text-ink-muted leading-normal mt-1 pl-5 pr-2 sm:pr-12">
           {combo.description}
         </p>
       )}

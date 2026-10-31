@@ -192,21 +192,21 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-sans select-none">
       {/* Minimal Top Header - No Clutter, Readable From 2m */}
-      <header className="h-16 bg-neutral-900 border-b border-neutral-800 px-6 flex items-center justify-between shrink-0 print:hidden">
-        <div className="flex items-center gap-4">
-          <span className="font-serif text-2xl font-black tracking-tight text-white">
+      <header className="min-h-[64px] py-2 bg-neutral-900 border-b border-neutral-800 px-4 sm:px-6 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shrink-0 print:hidden">
+        <div className="flex items-center gap-2.5 sm:gap-4 flex-wrap">
+          <span className="font-serif text-xl sm:text-2xl font-black tracking-tight text-white whitespace-nowrap">
             MANASU KITCHEN
           </span>
-          <span className="text-xs uppercase font-extrabold tracking-widest px-2.5 py-1 bg-amber-400 text-neutral-950 rounded-sm">
+          <span className="text-[11px] sm:text-xs uppercase font-extrabold tracking-widest px-2.5 py-1 bg-amber-400 text-neutral-950 rounded-sm">
             LIVE KDS
           </span>
-          <span className="text-sm font-mono font-bold text-neutral-400 hidden sm:inline">
+          <span className="text-xs sm:text-sm font-mono font-bold text-neutral-400 hidden md:inline">
             {activeTickets.length} ACTIVE TICKET{activeTickets.length === 1 ? '' : 'S'}
           </span>
         </div>
 
         {/* Minimal Controls */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setShowReady(prev => !prev)}
@@ -265,8 +265,8 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
             </p>
           </div>
         ) : (
-          /* High-Contrast Large Tickets Grid (oldest first) */
-          <div className="flex flex-wrap lg:flex-nowrap gap-5 items-start">
+          /* High-Contrast Multi-Column Ticket Board (oldest first) */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 items-start">
             {activeTickets.map(order => {
               // Calculate elapsed waiting minutes
               const elapsedMinutes = Math.max(
@@ -299,7 +299,7 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
               return (
                 <div
                   key={order.id}
-                  className={`w-full sm:w-[360px] lg:w-[400px] shrink-0 bg-neutral-900 border-2 rounded-sm flex flex-col justify-between transition-all ${
+                  className={`w-full bg-neutral-900 border-2 rounded-sm flex flex-col justify-between transition-all ${
                     isReady
                       ? 'border-emerald-500'
                       : isPreparing

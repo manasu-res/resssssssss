@@ -190,7 +190,7 @@ export function AdminReportsView() {
   const maxDaySales = Math.max(...dayByDay.map(d => d.totalSales), 1);
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-8 w-full max-w-6xl xl:max-w-7xl 2xl:max-w-full">
       {/* Title & Section Header */}
       <div className="border-b border-rule pb-3">
         <h2 className="font-serif text-2xl font-bold tracking-tight text-ink">

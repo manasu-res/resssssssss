@@ -238,21 +238,21 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   });
 
   return (
-    <div className="min-h-screen bg-paper text-ink pb-24 max-w-lg mx-auto border-x border-rule/30">
+    <div className="min-h-screen bg-paper text-ink pb-28 w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 md:px-8 border-x border-rule/30">
       {/* Top Printed Header */}
-      <header className="px-4 pt-4 pb-3 border-b border-rule bg-paper sticky top-0 z-30">
+      <header className="pt-4 pb-3 border-b border-rule bg-paper sticky top-0 z-30">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="font-serif text-2xl font-bold tracking-tight text-ink leading-none">
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold tracking-tight text-ink leading-none">
               Manasu
             </h1>
-            <p className="text-[11px] uppercase tracking-widest text-ink-muted mt-0.5">
+            <p className="text-[11px] sm:text-xs uppercase tracking-widest text-ink-muted mt-0.5">
               Restaurant &middot; Bengaluru
             </p>
           </div>
 
           <div className="text-right">
-            <span className="inline-block px-2.5 py-1 bg-ink text-paper text-xs font-semibold tracking-wide rounded-sm uppercase">
+            <span className="inline-block px-3 py-1 bg-ink text-paper text-xs sm:text-sm font-semibold tracking-wide rounded-sm uppercase">
               {table.label}
             </span>
           </div>
@@ -260,13 +260,13 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
         {/* Veg-only toggle */}
         <div className="mt-3 flex items-center justify-between border-t border-rule/50 pt-2.5">
-          <span className="text-[11px] font-medium text-ink-muted uppercase tracking-wider">
+          <span className="text-[11px] sm:text-xs font-medium text-ink-muted uppercase tracking-wider">
             Dietary filter
           </span>
           <button
             type="button"
             onClick={() => setVegOnly(prev => !prev)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-sm transition-colors border ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-sm transition-colors border cursor-pointer ${
               vegOnly
                 ? 'bg-ink text-paper border-ink font-semibold'
                 : 'bg-white text-ink border-rule hover:bg-paper-subtle'
@@ -283,15 +283,15 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         <nav
           ref={tabsContainerRef}
           aria-label="Menu categories"
-          className="mt-3 -mx-4 px-4 flex items-center gap-2 overflow-x-auto border-t border-rule/50 pt-2 pb-0.5 no-scrollbar"
+          className="mt-3 -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8 flex items-center gap-2 overflow-x-auto border-t border-rule/50 pt-2 pb-0.5 no-scrollbar"
         >
           {filteredCombos.length > 0 && (
             <button
               type="button"
               onClick={() => scrollToSection('section-combos')}
-              className={`shrink-0 px-2.5 py-1 text-xs uppercase tracking-wider rounded-sm transition-colors ${
+              className={`shrink-0 px-3 py-1 text-xs uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
                 activeTab === 'section-combos'
-                  ? 'bg-chilli text-white font-medium'
+                  ? 'bg-chilli text-white font-semibold'
                   : 'text-ink-muted hover:text-ink'
               }`}
             >
@@ -315,9 +315,9 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
                 key={category.id}
                 type="button"
                 onClick={() => scrollToSection(sectionId)}
-                className={`shrink-0 px-2.5 py-1 text-xs uppercase tracking-wider rounded-sm transition-colors ${
+                className={`shrink-0 px-3 py-1 text-xs uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
                   isActive
-                    ? 'bg-chilli text-white font-medium'
+                    ? 'bg-chilli text-white font-semibold'
                     : 'text-ink-muted hover:text-ink'
                 }`}
               >
@@ -328,15 +328,15 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         </nav>
       </header>
 
-      {/* Main Menu Body */}
-      <main className="p-4">
+      {/* Main Menu Body: Responsive Multi-Column */}
+      <main className="py-4">
         {/* Read-Only Notice when table has NO open session */}
         {!hasOpenSession && (
-          <div className="mb-5 p-3.5 bg-paper-card border border-ink/20 rounded-sm text-center">
-            <p className="font-serif text-sm font-semibold text-ink">
+          <div className="mb-6 p-4 bg-paper-card border border-ink/20 rounded-sm text-center">
+            <p className="font-serif text-sm sm:text-base font-semibold text-ink">
               Ask the waiter to open your table to order.
             </p>
-            <p className="text-[11px] text-ink-muted mt-0.5">
+            <p className="text-[11px] sm:text-xs text-ink-muted mt-0.5">
               Browse our printed menu card below while your table is being opened.
             </p>
           </div>
@@ -345,13 +345,13 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         {/* Placed order status tracker (live updates: pending, approved, preparing, ready, served) */}
         {orders.length > 0 && <OrderStatusBanner orders={orders} />}
 
-        {/* Combos section (at the top with included items listed in small text) */}
+        {/* Combos section (Full width or multi-column subgrid on desktop) */}
         {filteredCombos.length > 0 && (
-          <section id="section-combos" className="mb-6 pt-1">
-            <h2 className="font-serif text-xs font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-2">
-              Signature Combos
+          <section id="section-combos" className="mb-8 pt-1 border-b border-rule/50 pb-6">
+            <h2 className="font-serif text-xs sm:text-sm font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-3">
+              Signature Combos & Thalis
             </h2>
-            <div className="divide-y divide-rule/30">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
               {filteredCombos.map(combo => {
                 const cartItem = cart.find(ci => ci.id === combo.id && ci.type === 'combo');
                 return (
@@ -371,45 +371,47 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
           </section>
         )}
 
-        {/* Category Sections */}
-        {categories.map(category => {
-          const categoryItems = items.filter(item => {
-            if (item.category_id !== category.id) return false;
-            if (!vegOnly) return true;
-            return item.is_veg !== undefined ? item.is_veg : item.dietary === 'veg';
-          });
+        {/* Category Sections: Multi-column grid on md and above */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 items-start">
+          {categories.map(category => {
+            const categoryItems = items.filter(item => {
+              if (item.category_id !== category.id) return false;
+              if (!vegOnly) return true;
+              return item.is_veg !== undefined ? item.is_veg : item.dietary === 'veg';
+            });
 
-          if (categoryItems.length === 0) return null;
+            if (categoryItems.length === 0) return null;
 
-          return (
-            <section key={category.id} id={`section-${category.id}`} className="mb-6 pt-1">
-              <h2 className="font-serif text-xs font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-2">
-                {category.name}
-              </h2>
-              <div>
-                {categoryItems.map(item => {
-                  const cartItem = cart.find(ci => ci.id === item.id && ci.type === 'item');
-                  return (
-                    <MenuItemRow
-                      key={item.id}
-                      item={item}
-                      quantityInCart={cartItem?.quantity || 0}
-                      note={cartItem?.note || ''}
-                      readOnly={!hasOpenSession}
-                      onAdd={() => handleAddItem(item)}
-                      onRemove={() => handleRemoveItem(item.id)}
-                      onUpdateNote={note => handleUpdateItemNote(item.id, note)}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
+            return (
+              <section key={category.id} id={`section-${category.id}`} className="pt-1">
+                <h2 className="font-serif text-xs sm:text-sm font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-2">
+                  {category.name}
+                </h2>
+                <div>
+                  {categoryItems.map(item => {
+                    const cartItem = cart.find(ci => ci.id === item.id && ci.type === 'item');
+                    return (
+                      <MenuItemRow
+                        key={item.id}
+                        item={item}
+                        quantityInCart={cartItem?.quantity || 0}
+                        note={cartItem?.note || ''}
+                        readOnly={!hasOpenSession}
+                        onAdd={() => handleAddItem(item)}
+                        onRemove={() => handleRemoveItem(item.id)}
+                        onUpdateNote={note => handleUpdateItemNote(item.id, note)}
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
 
         {/* Printed Card Footer Note */}
-        <div className="text-center py-6 border-t border-rule/50 mt-8 text-[11px] text-ink-muted space-y-1">
-          <p className="font-serif italic text-ink/80">Prepared fresh with pure desi ghee & spices</p>
+        <div className="text-center py-8 border-t border-rule/50 mt-10 text-[11px] sm:text-xs text-ink-muted space-y-1">
+          <p className="font-serif italic text-ink/80 text-xs sm:text-sm">Prepared fresh with pure desi ghee & spices</p>
           <p>Prices inclusive of local preparation &middot; 5% GST applicable on billing</p>
         </div>
       </main>

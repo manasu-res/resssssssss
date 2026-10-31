@@ -650,8 +650,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         </button>
       </nav>
 
-      {/* Main Grid: Tables */}
-      <main className="p-4 flex-1 print:hidden">
+      {/* Floor Content: Split View on Desktop (lg:), Full Grid on Mobile/Tablet */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden print:hidden">
+        {/* Main Grid: Tables */}
+        <main className="p-3 sm:p-4 flex-1 overflow-y-auto">
         {loading ? (
           <div className="py-20 text-center">
             <p className="font-serif text-base text-ink-muted animate-pulse">Loading restaurant floor tables...</p>
@@ -661,7 +663,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
             <p className="text-xs text-ink-muted">No tables match the selected filter.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5 sm:gap-3">
             {filteredTables.map(tbl => {
               const totalPaise = tbl.running_total_paise || tbl.currentTotalPaise || 0;
               const pendingCount = tbl.pending_orders_count || tbl.pendingOrdersCount || 0;
@@ -701,7 +703,9 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                     setIsAddingItems(false);
                     setIsBillingPreview(false);
                   }}
-                  className={`min-h-[120px] p-3.5 text-left border rounded-sm flex flex-col justify-between transition-all active:scale-[0.98] cursor-pointer ${stateBadge.cardBorder}`}
+                  className={`min-h-[110px] sm:min-h-[120px] p-3 text-left border rounded-sm flex flex-col justify-between transition-all active:scale-[0.98] cursor-pointer ${
+                    selectedTableId === tbl.id ? 'ring-2 ring-ink shadow-sm bg-paper-card' : ''
+                  } ${stateBadge.cardBorder}`}
                 >
                   <div className="flex items-start justify-between gap-1">
                     <div>
@@ -751,10 +755,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         )}
       </main>
 
-      {/* Selected Table Detail Drawer */}
-      {selectedTable && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-ink/60 print:hidden">
-          <div className="w-full max-w-lg bg-paper border-l border-rule h-full flex flex-col shadow-none">
+        {/* Selected Table Detail: Split View on Desktop (lg:), Slide-Over Drawer on Mobile (< lg) */}
+        {selectedTable ? (
+          <div className="fixed inset-0 z-40 flex justify-end bg-ink/60 lg:bg-transparent lg:static lg:z-10 lg:w-[460px] xl:w-[500px] 2xl:w-[540px] lg:h-[calc(100vh-120px)] lg:sticky lg:top-0 lg:shrink-0 print:hidden">
+            <div className="w-full max-w-lg lg:max-w-none bg-paper border-l border-rule h-full flex flex-col shadow-none">
             {/* Drawer Header */}
             <div className="p-4 border-b border-rule bg-paper-subtle flex items-center justify-between shrink-0">
               <div>
@@ -1304,7 +1308,21 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
             )}
           </div>
         </div>
+      ) : (
+        /* Desktop Split View: Empty state when no table is selected (lg: and above) */
+        <aside className="hidden lg:flex lg:w-[460px] xl:w-[500px] 2xl:w-[540px] lg:h-[calc(100vh-120px)] lg:sticky lg:top-0 lg:shrink-0 border-l border-rule bg-paper flex-col justify-center items-center text-center p-8 space-y-3 print:hidden">
+          <div className="w-12 h-12 rounded-full border border-rule flex items-center justify-center text-ink-muted text-lg font-serif">
+            &#9633;
+          </div>
+          <h3 className="font-serif text-base font-bold text-ink">
+            Select a Table
+          </h3>
+          <p className="text-xs text-ink-muted max-w-xs">
+            Click any table on the restaurant floor to inspect active orders, add items, or generate bill.
+          </p>
+        </aside>
       )}
+    </div>
 
       {/* Past Bills Drawer (with Reprint & Corrections) */}
       {isPastBillsOpen && (

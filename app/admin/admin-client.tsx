@@ -567,8 +567,51 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
         </div>
       </div>
 
-      {/* Left Sidebar - Plain Utilitarian */}
-      <aside className="w-full md:w-56 bg-paper-card border-r border-rule flex flex-col shrink-0 print:hidden">
+      {/* Mobile Top Header (Visible on < md) */}
+      <header className="md:hidden bg-paper-card border-b border-rule px-4 py-2.5 flex items-center justify-between shrink-0 print:hidden">
+        <div>
+          <span className="text-[10px] uppercase tracking-widest font-bold text-ink-muted block">
+            MANASU RESTAURANT
+          </span>
+          <h1 className="font-serif text-base font-bold text-ink leading-tight">
+            Admin &middot; <span className="font-sans font-normal text-xs text-ink-muted">{currentOwner.name}</span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <a
+            href="/waiter"
+            className="px-2.5 py-1 text-xs border border-rule bg-white text-ink rounded-sm font-semibold"
+          >
+            Floor POS
+          </a>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-2.5 py-1 text-xs text-chilli font-semibold border border-chilli/40 bg-white rounded-sm"
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Horizontal Tabs Navigation (Thumb-friendly 40px targets, scrollable) */}
+      <nav aria-label="Admin tabs" className="md:hidden bg-paper-subtle border-b border-rule px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 print:hidden">
+        {(['menu', 'combos', 'tables', 'staff', 'settings', 'reports'] as AdminTab[]).map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`min-h-[40px] px-3.5 text-xs font-semibold uppercase tracking-wider rounded-sm shrink-0 transition-colors ${
+              tab === t ? 'bg-ink text-paper' : 'border border-rule bg-white text-ink hover:bg-paper'
+            }`}
+          >
+            {t === 'menu' ? 'Menu' : t === 'combos' ? `Combos (${combos.length})` : t === 'tables' ? `Tables (${tables.length})` : t === 'staff' ? `Staff (${staffList.length})` : t === 'settings' ? 'Settings' : 'Reports'}
+          </button>
+        ))}
+      </nav>
+
+      {/* Left Sidebar - Fixed on Desktop (md: and above) */}
+      <aside className="hidden md:flex md:w-60 lg:w-64 bg-paper-card border-r border-rule flex-col shrink-0 h-screen sticky top-0 print:hidden">
         <div className="p-4 border-b border-rule">
           <span className="text-[10px] uppercase tracking-widest font-semibold text-ink-muted block">
             MANASU RESTAURANT
@@ -641,7 +684,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
         <div className="p-3 border-t border-rule space-y-1.5">
           <a
             href="/waiter"
-            className="block text-center text-xs py-1.5 border border-rule bg-white text-ink rounded-sm hover:bg-paper-subtle"
+            className="block text-center text-xs py-1.5 border border-rule bg-white text-ink rounded-sm hover:bg-paper-subtle font-semibold"
           >
             Floor POS &rarr;
           </a>
@@ -663,8 +706,8 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
           /* ================================================================ */
           /* 1. MENU MANAGEMENT: CATEGORIES & FAST ENTRY ITEMS                */
           /* ================================================================ */
-          <div className="space-y-6 max-w-4xl">
-            <div className="flex items-center justify-between border-b border-rule pb-3">
+          <div className="space-y-6 w-full max-w-6xl xl:max-w-7xl 2xl:max-w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rule pb-3">
               <div>
                 <h2 className="font-serif text-xl font-bold text-ink">
                   Menu Management
@@ -675,7 +718,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
               </div>
 
               {/* Add Category Form */}
-              <form onSubmit={handleAddCategory} className="flex gap-2">
+              <form onSubmit={handleAddCategory} className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   required
@@ -686,7 +729,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                 />
                 <button
                   type="submit"
-                  className="h-9 px-3 bg-ink text-paper text-xs font-semibold rounded-sm hover:bg-black whitespace-nowrap"
+                  className="h-9 px-3 bg-ink text-paper text-xs font-semibold rounded-sm hover:bg-black whitespace-nowrap cursor-pointer"
                 >
                   + Add Category
                 </button>
@@ -750,7 +793,8 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                     </div>
 
                     {/* Items Table */}
-                    <table className="w-full text-xs text-left">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
                       <thead className="bg-paper-subtle border-b border-rule text-ink-muted uppercase text-[10px] font-semibold">
                         <tr>
                           <th className="px-4 py-2 w-8">Type</th>
@@ -875,6 +919,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                         </tr>
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 );
               })}
@@ -884,7 +929,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
           /* ================================================================ */
           /* 2. COMBOS MANAGEMENT                                             */
           /* ================================================================ */
-          <div className="space-y-6 max-w-4xl">
+          <div className="space-y-6 w-full max-w-6xl xl:max-w-7xl 2xl:max-w-full">
             <div className="border-b border-rule pb-2">
               <h2 className="font-serif text-xl font-bold text-ink">
                 Combos &amp; Thalis
@@ -894,8 +939,9 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
               </p>
             </div>
 
-            {/* Create Combo Form */}
-            <form onSubmit={handleSaveCombo} className="border border-rule bg-white p-4 rounded-sm space-y-4">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+              {/* Create Combo Form */}
+              <form onSubmit={handleSaveCombo} className="border border-rule bg-white p-4 rounded-sm space-y-4">
               <span className="block text-xs uppercase tracking-wider font-bold text-ink border-b border-rule pb-2">
                 Create New Combo
               </span>
@@ -1056,7 +1102,8 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
 
             {/* Combos Table */}
             <div className="border border-rule bg-white rounded-sm overflow-hidden">
-              <table className="w-full text-xs text-left">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
                 <thead className="bg-paper-card border-b border-rule text-ink-muted uppercase font-semibold text-[10px]">
                   <tr>
                     <th className="px-4 py-2">Combo</th>
@@ -1125,14 +1172,16 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                   )}
                 </tbody>
               </table>
+              </div>
+            </div>
             </div>
           </div>
         ) : tab === 'tables' ? (
           /* ================================================================ */
           /* 3. TABLES & QR CODES MANAGEMENT                                  */
           /* ================================================================ */
-          <div className="space-y-6 max-w-4xl">
-            <div className="flex items-center justify-between border-b border-rule pb-3">
+          <div className="space-y-6 w-full max-w-6xl xl:max-w-7xl 2xl:max-w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rule pb-3">
               <div>
                 <h2 className="font-serif text-xl font-bold text-ink">
                   Dining Tables &amp; QR Codes
@@ -1147,7 +1196,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="h-9 px-3 border border-ink text-ink text-xs font-semibold rounded-sm hover:bg-paper-subtle"
+                    className="h-9 px-3 border border-ink text-ink text-xs font-semibold rounded-sm hover:bg-paper-subtle cursor-pointer"
                   >
                     Print All QR Codes
                   </button>
@@ -1156,7 +1205,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
             </div>
 
             {/* Add Table Form */}
-            <form onSubmit={handleAddTable} className="border border-rule bg-white p-4 rounded-sm flex items-center gap-3">
+            <form onSubmit={handleAddTable} className="border border-rule bg-white p-4 rounded-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <span className="text-xs uppercase tracking-wider font-bold text-ink shrink-0">
                 Add Table:
               </span>
@@ -1170,7 +1219,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
               />
               <button
                 type="submit"
-                className="h-9 px-4 bg-ink text-paper text-xs font-semibold rounded-sm hover:bg-black shrink-0"
+                className="h-9 px-4 bg-ink text-paper text-xs font-semibold rounded-sm hover:bg-black shrink-0 cursor-pointer"
               >
                 + Add Table
               </button>
@@ -1178,73 +1227,75 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
 
             {/* Tables List */}
             <div className="border border-rule bg-white rounded-sm overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-paper-card border-b border-rule text-ink-muted uppercase font-semibold text-[10px]">
-                  <tr>
-                    <th className="px-4 py-2 w-20">Table</th>
-                    <th className="px-4 py-2">QR Code Preview</th>
-                    <th className="px-4 py-2">Target Customer URL</th>
-                    <th className="px-4 py-2 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-rule/50">
-                  {tables.map(tbl => {
-                    const tableUrl = `${appBaseUrl}/t/${tbl.qr_token}`;
-                    return (
-                      <tr key={tbl.id} className="hover:bg-paper-subtle/40">
-                        <td className="px-4 py-3 font-serif font-bold text-base text-ink">
-                          {tbl.label}
-                        </td>
-                        <td className="px-4 py-3">
-                          {qrImages[tbl.id] ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
-                              src={qrImages[tbl.id]}
-                              alt={`QR for ${tbl.label}`}
-                              className="w-16 h-16 border border-rule rounded-sm"
-                            />
-                          ) : (
-                            <span className="text-xs text-ink-muted">Generating...</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-[11px] text-ink-muted break-all">
-                          <a
-                            href={`/t/${tbl.qr_token}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-ink hover:underline font-semibold"
-                          >
-                            {tableUrl}
-                          </a>
-                        </td>
-                        <td className="px-4 py-3 text-right space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadQrPng(tbl)}
-                            className="h-7 px-2.5 border border-rule text-xs font-semibold rounded-sm hover:bg-paper-subtle"
-                          >
-                            Download QR
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleResetQr(tbl.id, tbl.label)}
-                            className="h-7 px-2.5 border border-rule hover:border-chilli text-xs font-semibold rounded-sm text-chilli hover:bg-chilli-light"
-                          >
-                            Reset QR
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-paper-card border-b border-rule text-ink-muted uppercase font-semibold text-[10px]">
+                    <tr>
+                      <th className="px-4 py-2 w-20">Table</th>
+                      <th className="px-4 py-2">QR Code Preview</th>
+                      <th className="px-4 py-2">Target Customer URL</th>
+                      <th className="px-4 py-2 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule/50">
+                    {tables.map(tbl => {
+                      const tableUrl = `${appBaseUrl}/t/${tbl.qr_token}`;
+                      return (
+                        <tr key={tbl.id} className="hover:bg-paper-subtle/40">
+                          <td className="px-4 py-3 font-serif font-bold text-base text-ink">
+                            {tbl.label}
+                          </td>
+                          <td className="px-4 py-3">
+                            {qrImages[tbl.id] ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img
+                                src={qrImages[tbl.id]}
+                                alt={`QR for ${tbl.label}`}
+                                className="w-16 h-16 border border-rule rounded-sm"
+                              />
+                            ) : (
+                              <span className="text-xs text-ink-muted">Generating...</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[11px] text-ink-muted break-all">
+                            <a
+                              href={`/t/${tbl.qr_token}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-ink hover:underline font-semibold"
+                            >
+                              {tableUrl}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3 text-right space-x-2">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadQrPng(tbl)}
+                              className="h-7 px-2.5 border border-rule text-xs font-semibold rounded-sm hover:bg-paper-subtle"
+                            >
+                              Download QR
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleResetQr(tbl.id, tbl.label)}
+                              className="h-7 px-2.5 border border-rule hover:border-chilli text-xs font-semibold rounded-sm text-chilli hover:bg-chilli-light"
+                            >
+                              Reset QR
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         ) : tab === 'staff' ? (
           /* ================================================================ */
           /* 4. STAFF MANAGEMENT                                              */
           /* ================================================================ */
-          <div className="space-y-6 max-w-4xl">
+          <div className="space-y-6 w-full max-w-6xl xl:max-w-7xl 2xl:max-w-full">
             <div className="border-b border-rule pb-2">
               <h2 className="font-serif text-xl font-bold text-ink">
                 Staff Accounts
@@ -1254,8 +1305,9 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
               </p>
             </div>
 
-            {/* Create Staff Form */}
-            <form onSubmit={handleCreateStaff} className="border border-rule bg-white p-4 rounded-sm space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+              {/* Create Staff Form */}
+              <form onSubmit={handleCreateStaff} className="border border-rule bg-white p-4 rounded-sm space-y-3">
               <span className="block text-xs uppercase tracking-wider font-bold text-ink border-b border-rule pb-2">
                 Create Staff Account
               </span>
@@ -1343,68 +1395,71 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
 
             {/* Staff Table */}
             <div className="border border-rule bg-white rounded-sm overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-paper-card border-b border-rule text-ink-muted uppercase font-semibold text-[10px]">
-                  <tr>
-                    <th className="px-4 py-2">Name</th>
-                    <th className="px-4 py-2">Email</th>
-                    <th className="px-4 py-2">Role</th>
-                    <th className="px-4 py-2 text-center">Status</th>
-                    <th className="px-4 py-2 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-rule/50">
-                  {staffList.map(st => {
-                    const isSelf = st.id === currentOwner.userId;
-                    return (
-                      <tr key={st.id} className="hover:bg-paper-subtle/50">
-                        <td className="px-4 py-2.5 font-medium text-ink">
-                          {st.name} {isSelf && <span className="text-[10px] text-ink-muted font-normal">(You)</span>}
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-[11px] text-ink-muted">
-                          {st.email || '—'}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded-sm bg-paper-card border border-rule">
-                            {st.role}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span
-                            className={`px-1.5 py-0.5 rounded-sm font-semibold uppercase text-[10px] ${
-                              st.is_active
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}
-                          >
-                            {st.is_active ? 'Active' : 'Deactivated'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-right">
-                          {!isSelf && (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleStaffStatus(st.id, st.is_active)}
-                              className={`text-xs font-semibold hover:underline ${
-                                st.is_active ? 'text-chilli' : 'text-green-800'
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-paper-card border-b border-rule text-ink-muted uppercase font-semibold text-[10px]">
+                    <tr>
+                      <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Email</th>
+                      <th className="px-4 py-2">Role</th>
+                      <th className="px-4 py-2 text-center">Status</th>
+                      <th className="px-4 py-2 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule/50">
+                    {staffList.map(st => {
+                      const isSelf = st.id === currentOwner.userId;
+                      return (
+                        <tr key={st.id} className="hover:bg-paper-subtle/50">
+                          <td className="px-4 py-2.5 font-medium text-ink">
+                            {st.name} {isSelf && <span className="text-[10px] text-ink-muted font-normal">(You)</span>}
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-[11px] text-ink-muted">
+                            {st.email || '—'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded-sm bg-paper-card border border-rule">
+                              {st.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            <span
+                              className={`px-1.5 py-0.5 rounded-sm font-semibold uppercase text-[10px] ${
+                                st.is_active
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800'
                               }`}
                             >
-                              {st.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              {st.is_active ? 'Active' : 'Deactivated'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            {!isSelf && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStaffStatus(st.id, st.is_active)}
+                                className={`text-xs font-semibold hover:underline ${
+                                  st.is_active ? 'text-chilli' : 'text-green-800'
+                                }`}
+                              >
+                                {st.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
             </div>
           </div>
         ) : tab === 'settings' ? (
           /* ================================================================ */
           /* 5. RESTAURANT SETTINGS                                           */
           /* ================================================================ */
-          <div className="space-y-6 max-w-2xl">
+          <div className="space-y-6 w-full max-w-4xl">
             <div className="border-b border-rule pb-2">
               <h2 className="font-serif text-xl font-bold text-ink">
                 Restaurant Settings

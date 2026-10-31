@@ -92,7 +92,7 @@ export function OrderDrawer({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-ink/60">
       <div
-        className="w-full max-w-lg mx-auto bg-paper text-ink border-t border-rule max-h-[88vh] flex flex-col shadow-none"
+        className="w-full max-w-lg md:max-w-xl mx-auto bg-paper text-ink border-t border-rule max-h-[88vh] flex flex-col shadow-none"
         style={{ borderRadius: '4px 4px 0 0' }}
       >
         {/* Header */}
@@ -109,7 +109,7 @@ export function OrderDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close order drawer"
-            className="w-8 h-8 flex items-center justify-center border border-rule/80 rounded-sm text-sm text-ink hover:bg-paper-subtle"
+            className="w-10 h-10 flex items-center justify-center border border-rule/80 rounded-sm text-lg text-ink hover:bg-paper-subtle cursor-pointer"
           >
             &times;
           </button>
@@ -139,32 +139,32 @@ export function OrderDrawer({
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                       <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size="sm" />
-                      <span className="text-sm font-medium text-ink truncate">
+                      <span className="text-sm font-medium text-ink break-words">
                         {name}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-semibold tabular-nums text-ink">
+                      <span className="text-xs font-semibold tabular-nums text-ink whitespace-nowrap">
                         {formatRupees(rawPrice * ci.quantity)}
                       </span>
 
-                      <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-7">
+                      <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-8">
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, -1)}
-                          className="w-6 h-full flex items-center justify-center text-ink text-xs font-bold hover:bg-paper-subtle"
+                          className="w-8 h-full flex items-center justify-center text-ink text-sm font-bold hover:bg-paper-subtle active:bg-paper-subtle"
                           aria-label={`Decrease ${name}`}
                         >
                           -
                         </button>
-                        <span className="w-5 text-center text-xs font-bold tabular-nums text-ink">
+                        <span className="w-6 text-center text-xs font-bold tabular-nums text-ink">
                           {ci.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, 1)}
-                          className="w-6 h-full flex items-center justify-center text-ink text-xs font-bold hover:bg-paper-subtle"
+                          className="w-8 h-full flex items-center justify-center text-ink text-sm font-bold hover:bg-paper-subtle active:bg-paper-subtle"
                           aria-label={`Increase ${name}`}
                         >
                           +
