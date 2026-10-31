@@ -460,10 +460,10 @@ class RestaurantStore {
     }
 
     const subtotalPaise = tableOrders.reduce((sum, o) => sum + o.total_paise, 0);
-    // 5% GST (2.5% CGST + 2.5% SGST standard for restaurant service in India)
-    const taxPaise = Math.round(subtotalPaise * 0.05);
+    // Zero tax (0% GST)
+    const taxPaise = 0;
     const discountPaise = params.discountPaise || 0;
-    const finalPaise = Math.max(0, subtotalPaise + taxPaise - discountPaise);
+    const finalPaise = Math.max(0, subtotalPaise - discountPaise);
 
     const billId = `bill-${Date.now()}`;
     const newBill: Bill = {

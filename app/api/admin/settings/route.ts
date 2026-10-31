@@ -10,7 +10,7 @@ const settingsSchema = z.object({
   address: z.string().min(1, 'Address is required'),
   phone: z.string().min(1, 'Phone is required'),
   gstin: z.string().nullable().optional(),
-  tax_percent: z.number().min(0).max(100).default(5),
+  tax_percent: z.number().min(0).max(100).default(0),
   bill_footer: z.string().default('Thank you! Visit again.'),
   paper_width: z.enum(['80mm', '58mm']).default('80mm'),
 });
@@ -21,7 +21,7 @@ const DEFAULT_SETTINGS = {
   address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
   phone: '+91 80 2520 1980',
   gstin: '29AABCM8291Q1ZP',
-  tax_percent: 5,
+  tax_percent: 0,
   bill_footer: 'Thank you for dining at Manasu! Visit again.',
   paper_width: '80mm',
 };

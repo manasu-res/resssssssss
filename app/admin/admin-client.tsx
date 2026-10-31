@@ -120,7 +120,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
     address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
     phone: '+91 80 2520 1980',
     gstin: '29AABCM8291Q1ZP',
-    tax_percent: 5,
+    tax_percent: 0,
     bill_footer: 'Thank you for dining at Manasu! Visit again.',
   });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -578,12 +578,6 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href="/waiter"
-            className="px-2.5 py-1 text-xs border border-rule bg-white text-ink rounded-sm font-semibold"
-          >
-            Floor POS
-          </a>
           <button
             type="button"
             onClick={handleLogout}
@@ -682,12 +676,6 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
         </nav>
 
         <div className="p-3 border-t border-rule space-y-1.5">
-          <a
-            href="/waiter"
-            className="block text-center text-xs py-1.5 border border-rule bg-white text-ink rounded-sm hover:bg-paper-subtle font-semibold"
-          >
-            Floor POS &rarr;
-          </a>
           <button
             type="button"
             onClick={handleLogout}

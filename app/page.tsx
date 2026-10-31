@@ -45,56 +45,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Section 2: Staff Terminals */}
-        <div className="mt-5 pt-4 border-t border-rule">
-          <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted mb-2">
-            Staff terminals
-          </span>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Link
-              href="/waiter"
-              className="p-3 border border-rule bg-white hover:border-ink rounded-sm transition-colors"
-            >
-              <span className="font-bold text-xs uppercase tracking-wider text-ink block">
-                Waiter
-              </span>
-              <span className="text-[11px] text-ink-muted block mt-0.5">
-                Floor POS
-              </span>
-            </Link>
-
-            <Link
-              href="/kitchen"
-              className="p-3 border border-rule bg-pos-panel text-white hover:border-neutral-500 rounded-sm transition-colors"
-            >
-              <span className="font-bold text-xs uppercase tracking-wider text-amber-400 block">
-                Kitchen
-              </span>
-              <span className="text-[11px] text-neutral-300 block mt-0.5">
-                Ticket board
-              </span>
-            </Link>
-
-            <Link
-              href="/admin"
-              className="p-3 border border-rule bg-white hover:border-ink rounded-sm transition-colors"
-            >
-              <span className="font-bold text-xs uppercase tracking-wider text-ink block">
-                Admin
-              </span>
-              <span className="text-[11px] text-ink-muted block mt-0.5">
-                Menu &amp; settings
-              </span>
-            </Link>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-5 pt-3.5 border-t border-rule flex items-center justify-between text-[11px] text-ink-muted">
-          <Link href="/admin" className="font-semibold text-ink hover:underline">
-            Owner Admin (/admin) &rarr;
-          </Link>
-          <Link href="/login" className="font-semibold text-ink hover:underline">
+        {/* Footer: Staff Access */}
+        <div className="mt-5 pt-3.5 border-t border-rule flex items-center justify-between text-xs text-ink-muted">
+          <span>Bengaluru &middot; Indiranagar</span>
+          <Link
+            href="/login"
+            className="font-bold text-xs uppercase tracking-wider text-ink border border-ink/40 bg-white hover:bg-paper-subtle px-3 py-1.5 rounded-sm"
+          >
             Staff login &rarr;
           </Link>
         </div>

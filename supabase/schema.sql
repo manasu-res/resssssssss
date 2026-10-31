@@ -115,8 +115,8 @@ CREATE TABLE IF NOT EXISTS public.bills (
   bill_no TEXT NOT NULL,
   table_label TEXT NOT NULL DEFAULT '',
   subtotal INT NOT NULL CHECK (subtotal >= 0),
-  tax_percent NUMERIC NOT NULL DEFAULT 5,
-  tax_amount INT NOT NULL CHECK (tax_amount >= 0),
+  tax_percent NUMERIC NOT NULL DEFAULT 0,
+  tax_amount INT NOT NULL CHECK (tax_amount >= 0) DEFAULT 0,
   total INT NOT NULL CHECK (total >= 0),
   payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'upi', 'card')),
   gstin TEXT,
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
   address TEXT NOT NULL,
   phone TEXT NOT NULL,
   gstin TEXT,
-  tax_percent NUMERIC NOT NULL DEFAULT 5,
+  tax_percent NUMERIC NOT NULL DEFAULT 0,
   bill_footer TEXT NOT NULL DEFAULT 'Thank you! Visit again.',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -422,7 +422,7 @@ VALUES (
   '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
   '+91 80 2520 1980',
   '29AABCM8291Q1ZP',
-  5.0,
+  0.0,
   'Thank you for dining at Manasu! Visit again.'
 )
 ON CONFLICT (id) DO UPDATE SET

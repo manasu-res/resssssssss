@@ -146,7 +146,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
     phone: '+91 80 2520 1980',
     gstin: '29AABCM8291Q1ZP',
-    tax_percent: 5,
+    tax_percent: 0,
     bill_footer: 'Thank you for dining at Manasu! Visit again.',
     paper_width: '80mm',
   });
@@ -609,7 +609,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   const previewGroupedLines = Array.from(previewGroupedMap.values());
   const previewSubtotal = previewGroupedLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
-  const previewTaxPercent = settings?.tax_percent ?? 5;
+  const previewTaxPercent = settings?.tax_percent ?? 0;
   const previewTaxAmount = Math.round(previewSubtotal * (previewTaxPercent / 100));
   const previewGrandTotal = previewSubtotal + previewTaxAmount;
 
@@ -640,20 +640,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
             Past Bills
           </button>
 
-          {currentStaff.role === 'owner' && (
-            <a
-              href="/admin"
-              className="min-h-[44px] px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-semibold uppercase tracking-wider"
-            >
-              Admin
-            </a>
-          )}
-          <a
-            href="/kitchen"
-            className="min-h-[44px] px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-semibold uppercase tracking-wider"
-          >
-            Kitchen
-          </a>
           <button
             type="button"
             onClick={handleLogout}
@@ -1028,19 +1014,21 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                           </span>
                         </div>
 
-                        <div className="flex justify-between text-xs">
-                          <span className="text-ink-muted">
-                            {previewTaxPercent}% GST
-                            {settings.gstin ? (
-                              <span className="text-[10px] text-ink-muted ml-1">
-                                (GSTIN: {settings.gstin})
-                              </span>
-                            ) : null}:
-                          </span>
-                          <span className="font-bold tabular-nums">
-                            {formatRupees(previewTaxAmount)}
-                          </span>
-                        </div>
+                        {previewTaxPercent > 0 && (
+                          <div className="flex justify-between text-xs">
+                            <span className="text-ink-muted">
+                              {previewTaxPercent}% GST
+                              {settings.gstin ? (
+                                <span className="text-[10px] text-ink-muted ml-1">
+                                  (GSTIN: {settings.gstin})
+                                </span>
+                              ) : null}:
+                            </span>
+                            <span className="font-bold tabular-nums">
+                              {formatRupees(previewTaxAmount)}
+                            </span>
+                          </div>
+                        )}
 
                         <div className="border-t border-ink pt-2 flex justify-between text-base font-black">
                           <span>Grand Total:</span>

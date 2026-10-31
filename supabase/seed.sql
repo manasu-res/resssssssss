@@ -20,7 +20,7 @@ VALUES (
   '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
   '+91 80 2520 1980',
   '29AABCM8291Q1ZP',
-  5.0,
+  0.0,
   'Thank you for dining at Manasu! Visit again.'
 )
 ON CONFLICT (id) DO UPDATE SET

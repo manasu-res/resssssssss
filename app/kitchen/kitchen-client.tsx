@@ -229,15 +229,6 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
             [ ] Fullscreen
           </button>
 
-          {currentStaff.role === 'owner' && (
-            <a
-              href="/admin"
-              className="min-h-[44px] px-3.5 text-xs font-bold uppercase tracking-wider rounded-sm border border-neutral-700 bg-neutral-900 text-neutral-300 hover:text-white flex items-center"
-            >
-              Admin &rarr;
-            </a>
-          )}
-
           <button
             type="button"
             onClick={handleLogout}

@@ -407,7 +407,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
         {/* Printed Card Footer Note */}
         <div className="text-center py-6 border-t border-rule/50 mt-10 text-[11px] text-ink-muted">
-          <p>Dishes prepared fresh to order &middot; 5% GST applicable on billing</p>
+          <p>Dishes prepared fresh to order &middot; Pure traditional flavours</p>
         </div>
       </main>
 

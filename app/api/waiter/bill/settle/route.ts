@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
               .eq('id', 1)
               .maybeSingle();
 
-            const taxPercent = Number(settings?.tax_percent ?? 5);
+            const taxPercent = Number(settings?.tax_percent ?? 0);
             const taxAmount = Math.round((subtotal * taxPercent) / 100);
             const total = Math.max(0, subtotal + taxAmount - discountPaise);
 
@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
           address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
           phone: '+91 80 2520 1980',
           gstin: '29AABCM8291Q1ZP',
-          tax_percent: 5,
+          tax_percent: 0,
           bill_footer: 'Thank you for dining at Manasu! Visit again.',
           paper_width: '80mm',
         },
