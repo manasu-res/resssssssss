@@ -138,6 +138,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
   const [combos, setCombos] = useState<ComboData[]>([]);
   const [activeCategoryTab, setActiveCategoryTab] = useState<string>('all');
+  const [itemSearch, setItemSearch] = useState<string>('');
 
   // Restaurant settings (tax percent, GSTIN, etc.)
   const [settings, setSettings] = useState<RestaurantSettings>({
@@ -322,6 +323,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     );
     setIsAddingItems(true);
     setIsBillingPreview(false);
+    fetchMenu();
     try {
       await fetch('/api/waiter/table/open', {
         method: 'POST',
@@ -902,8 +904,12 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                   <button
                     type="button"
                     onClick={() => {
-                      setIsAddingItems(!isAddingItems);
+                      const next = !isAddingItems;
+                      setIsAddingItems(next);
                       setIsBillingPreview(false);
+                      if (next && menuItems.length === 0) {
+                        fetchMenu();
+                      }
                     }}
                     className={`min-h-[48px] flex-1 px-3 border text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
                       isAddingItems
@@ -1094,10 +1100,45 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         ))}
                       </div>
 
+                      {/* Search Bar for Fast Waiter Lookup */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={itemSearch}
+                          onChange={e => setItemSearch(e.target.value)}
+                          placeholder="Search items (dosa, biryani, coffee, roast)..."
+                          className="w-full px-3 py-2 text-xs border border-rule rounded-sm bg-paper-subtle text-ink placeholder:text-ink-muted focus:outline-none focus:border-ink"
+                        />
+                        {itemSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setItemSearch('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-ink-muted hover:text-ink font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+
                       {/* Menu Items Picker (Min 48px tap targets) */}
-                      <div className="max-h-60 overflow-y-auto divide-y divide-rule/40 border border-rule p-2 rounded-sm space-y-1">
+                      <div className="max-h-72 overflow-y-auto divide-y divide-rule/40 border border-rule p-2 rounded-sm space-y-1">
+                        {combos.length === 0 && menuItems.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-ink-muted space-y-2">
+                            <p>No menu items loaded.</p>
+                            <button
+                              type="button"
+                              onClick={() => fetchMenu()}
+                              className="px-3 py-1.5 border border-ink text-xs font-semibold rounded-sm bg-white hover:bg-paper-subtle cursor-pointer"
+                            >
+                              Reload Menu
+                            </button>
+                          </div>
+                        ) : null}
+
                         {(activeCategoryTab === 'all' || activeCategoryTab === 'combos') &&
-                          combos.map(combo => {
+                          combos
+                            .filter(c => !itemSearch || c.name.toLowerCase().includes(itemSearch.toLowerCase()))
+                            .map(combo => {
                             const cartEntry = orderCart.find(ci => ci.id === combo.id && ci.type === 'combo');
                             const pricePaise = combo.price ?? combo.price_paise ?? 0;
                             return (
@@ -1148,7 +1189,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                           })}
 
                         {menuItems
-                          .filter(i => activeCategoryTab === 'all' || i.category_id === activeCategoryTab)
+                          .filter(i => (activeCategoryTab === 'all' || i.category_id === activeCategoryTab) && (!itemSearch || i.name.toLowerCase().includes(itemSearch.toLowerCase())))
                           .map(item => {
                             const cartEntry = orderCart.find(ci => ci.id === item.id && ci.type === 'item');
                             const pricePaise = item.price ?? item.price_paise ?? 0;
