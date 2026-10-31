@@ -99,6 +99,12 @@ export async function POST(req: NextRequest) {
             if (line.itemId) {
               const dbItem = dbItems.find(i => i.id === line.itemId);
               if (dbItem) {
+                if (dbItem.is_available === false) {
+                  return NextResponse.json(
+                    { error: `"${dbItem.name}" is sold out and cannot be ordered.` },
+                    { status: 400 }
+                  );
+                }
                 linesToInsert.push({
                   menu_item_id: dbItem.id,
                   combo_id: null,
@@ -111,6 +117,12 @@ export async function POST(req: NextRequest) {
             } else if (line.comboId) {
               const dbCombo = dbCombos.find(c => c.id === line.comboId);
               if (dbCombo) {
+                if (dbCombo.is_available === false) {
+                  return NextResponse.json(
+                    { error: `"${dbCombo.name}" is sold out and cannot be ordered.` },
+                    { status: 400 }
+                  );
+                }
                 linesToInsert.push({
                   menu_item_id: null,
                   combo_id: dbCombo.id,
@@ -162,6 +174,26 @@ export async function POST(req: NextRequest) {
     }
 
     // Fallback: In-memory store (Guaranteed to succeed)
+    for (const line of items) {
+      if (line.itemId) {
+        const it = dbStore.getItemById(line.itemId);
+        if (it && it.is_available === false) {
+          return NextResponse.json(
+            { error: `"${it.name}" is sold out and cannot be ordered.` },
+            { status: 400 }
+          );
+        }
+      } else if (line.comboId) {
+        const combo = dbStore.getComboById(line.comboId);
+        if (combo && combo.is_available === false) {
+          return NextResponse.json(
+            { error: `"${combo.name}" is sold out and cannot be ordered.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     dbStore.openTableSession(tableId);
 
     const { order, items: createdItems } = dbStore.placeOrder({
@@ -192,9 +224,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('Waiter add order error:', err);
+    const isUnavailable = err.message && err.message.toLowerCase().includes('unavailable');
     return NextResponse.json(
       { error: err.message || 'Failed to place order' },
-      { status: 500 }
+      { status: isUnavailable ? 400 : 500 }
     );
   }
 }

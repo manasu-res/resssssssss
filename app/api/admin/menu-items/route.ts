@@ -130,6 +130,18 @@ export async function PATCH(req: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Keep in-memory dbStore synchronized as well
+    const memItem = dbStore.items.find(i => i.id === id);
+    if (memItem) {
+      if (isAvailable !== undefined) memItem.is_available = isAvailable;
+      if (name !== undefined) memItem.name = name;
+      if (pricePaise !== undefined) memItem.price_paise = pricePaise;
+      if (isVeg !== undefined) memItem.dietary = isVeg ? 'veg' : 'non_veg';
+      if (description !== undefined) memItem.description = description;
+      if (sortOrder !== undefined) memItem.sort_order = sortOrder;
+    }
+
     return NextResponse.json({ success: true, item: data });
   } catch (err: any) {
     const body = await req.json().catch(() => ({}));

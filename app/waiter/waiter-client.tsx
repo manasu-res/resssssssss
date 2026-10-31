@@ -311,8 +311,15 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       console.warn('Realtime subscription skipped or unavailable:', e);
     }
 
-    // 2. High-reliability polling fallback every 4s
-    const interval = setInterval(fetchTables, 4000);
+    // 2. High-reliability polling fallback every 4s (tables) and 8s (menu)
+    let pollTick = 0;
+    const interval = setInterval(() => {
+      fetchTables();
+      pollTick++;
+      if (pollTick % 2 === 0) {
+        fetchMenu();
+      }
+    }, 4000);
 
     return () => {
       clearInterval(interval);
@@ -449,6 +456,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   // Add Item to Waiter Direct Cart
   const handleAddItemToCart = (item: MenuItemData) => {
+    if (item.is_available === false) {
+      alert(`"${item.name}" is sold out and cannot be ordered.`);
+      return;
+    }
     const price = item.price ?? item.price_paise ?? 0;
     setOrderCart(prev => {
       const exist = prev.find(ci => ci.id === item.id && ci.type === 'item');
@@ -460,6 +471,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   };
 
   const handleAddComboToCart = (combo: ComboData) => {
+    if (combo.is_available === false) {
+      alert(`"${combo.name}" is sold out and cannot be ordered.`);
+      return;
+    }
     const price = combo.price ?? combo.price_paise ?? 0;
     setOrderCart(prev => {
       const exist = prev.find(ci => ci.id === combo.id && ci.type === 'combo');
@@ -483,6 +498,23 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   const handleSubmitWaiterOrder = async () => {
     if (!selectedTable || orderCart.length === 0 || submittingOrder) return;
+
+    // Check if any cart item is sold out
+    const soldOutItem = orderCart.find(ci => {
+      if (ci.type === 'item') {
+        const found = menuItems.find(m => m.id === ci.id);
+        return found && found.is_available === false;
+      } else {
+        const found = combos.find(c => c.id === ci.id);
+        return found && found.is_available === false;
+      }
+    });
+
+    if (soldOutItem) {
+      alert(`Cannot place order: "${soldOutItem.name}" is sold out.`);
+      return;
+    }
+
     setSubmittingOrder(true);
     try {
       const payload = {
@@ -506,6 +538,9 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         setOrderNotes('');
         setIsAddingItems(false);
         await fetchTables();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || 'Failed to place order');
       }
     } catch (err) {
       console.error('Error placing waiter order:', err);
@@ -956,7 +991,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                       const next = !isAddingItems;
                       setIsAddingItems(next);
                       setIsBillingPreview(false);
-                      if (next && menuItems.length === 0) {
+                      if (next) {
                         fetchMenu();
                       }
                     }}
@@ -1309,25 +1344,42 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                           combos
                             .filter(c => !itemSearch || c.name.toLowerCase().includes(itemSearch.toLowerCase()))
                             .map(combo => {
+                            const isAvailable = combo.is_available !== false;
                             const cartEntry = orderCart.find(ci => ci.id === combo.id && ci.type === 'combo');
                             const pricePaise = combo.price ?? combo.price_paise ?? 0;
                             return (
-                              <div key={combo.id} className="min-h-[48px] py-2 flex items-center justify-between text-xs">
+                              <div
+                                key={combo.id}
+                                className={`min-h-[48px] py-2 flex items-center justify-between text-xs ${
+                                  !isAvailable ? 'opacity-60 bg-paper-subtle/50' : ''
+                                }`}
+                              >
                                 <div className="flex items-center gap-1.5 pr-2">
                                   <DietaryBadge type={combo.dietary || (combo.is_veg ? 'veg' : 'non_veg')} size="sm" />
-                                  <span className="font-semibold text-ink">{combo.name}</span>
+                                  <span className={`font-semibold text-ink ${!isAvailable ? 'line-through text-ink-muted' : ''}`}>
+                                    {combo.name}
+                                  </span>
                                   <span className="text-ink-muted tabular-nums">
                                     ({formatRupees(pricePaise)})
                                   </span>
+                                  {!isAvailable && (
+                                    <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-100 text-red-900 border border-red-300 rounded-sm">
+                                      Sold Out
+                                    </span>
+                                  )}
                                 </div>
 
                                 <div className="shrink-0">
-                                  {cartEntry ? (
+                                  {!isAvailable ? (
+                                    <span className="min-h-[38px] px-2.5 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider border border-rule text-ink-muted bg-paper-subtle rounded-sm select-none">
+                                      Unavailable
+                                    </span>
+                                  ) : cartEntry ? (
                                     <div className="flex items-center border border-ink/40 rounded-sm bg-paper-subtle h-8">
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveFromCart(combo.id, 'combo')}
-                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm cursor-pointer"
                                         aria-label="Decrease quantity"
                                       >
                                         -
@@ -1338,7 +1390,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                                       <button
                                         type="button"
                                         onClick={() => handleAddComboToCart(combo)}
-                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm cursor-pointer"
                                         aria-label="Increase quantity"
                                       >
                                         +
@@ -1361,25 +1413,42 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         {menuItems
                           .filter(i => (activeCategoryTab === 'all' || i.category_id === activeCategoryTab) && (!itemSearch || i.name.toLowerCase().includes(itemSearch.toLowerCase())))
                           .map(item => {
+                            const isAvailable = item.is_available !== false;
                             const cartEntry = orderCart.find(ci => ci.id === item.id && ci.type === 'item');
                             const pricePaise = item.price ?? item.price_paise ?? 0;
                             return (
-                              <div key={item.id} className="min-h-[48px] py-2 flex items-center justify-between text-xs">
+                              <div
+                                key={item.id}
+                                className={`min-h-[48px] py-2 flex items-center justify-between text-xs ${
+                                  !isAvailable ? 'opacity-60 bg-paper-subtle/50' : ''
+                                }`}
+                              >
                                 <div className="flex items-center gap-1.5 pr-2">
                                   <DietaryBadge type={item.dietary || (item.is_veg ? 'veg' : 'non_veg')} size="sm" />
-                                  <span className="font-semibold text-ink">{item.name}</span>
+                                  <span className={`font-semibold text-ink ${!isAvailable ? 'line-through text-ink-muted' : ''}`}>
+                                    {item.name}
+                                  </span>
                                   <span className="text-ink-muted tabular-nums">
                                     ({formatRupees(pricePaise)})
                                   </span>
+                                  {!isAvailable && (
+                                    <span className="ml-1 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-red-100 text-red-900 border border-red-300 rounded-sm">
+                                      Sold Out
+                                    </span>
+                                  )}
                                 </div>
 
                                 <div className="shrink-0">
-                                  {cartEntry ? (
+                                  {!isAvailable ? (
+                                    <span className="min-h-[38px] px-2.5 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider border border-rule text-ink-muted bg-paper-subtle rounded-sm select-none">
+                                      Unavailable
+                                    </span>
+                                  ) : cartEntry ? (
                                     <div className="flex items-center border border-ink/40 rounded-sm bg-paper-subtle h-8">
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveFromCart(item.id, 'item')}
-                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm cursor-pointer"
                                         aria-label="Decrease quantity"
                                       >
                                         -
@@ -1390,7 +1459,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                                       <button
                                         type="button"
                                         onClick={() => handleAddItemToCart(item)}
-                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm cursor-pointer"
                                         aria-label="Increase quantity"
                                       >
                                         +

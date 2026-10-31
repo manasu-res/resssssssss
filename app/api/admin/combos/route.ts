@@ -159,6 +159,56 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PATCH(req: NextRequest) {
+  const { errorResponse } = await verifyStaffApiRoute(['owner']);
+  if (errorResponse) return errorResponse;
+
+  try {
+    const body = await req.json();
+    const { id, isAvailable, name, pricePaise, isVeg, description } = body;
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+    const serviceSupabase = createServiceRoleClient();
+    const updateData: any = {};
+    if (isAvailable !== undefined) updateData.is_available = isAvailable;
+    if (name !== undefined) updateData.name = name;
+    if (pricePaise !== undefined) updateData.price = pricePaise;
+    if (isVeg !== undefined) updateData.is_veg = isVeg;
+    if (description !== undefined) updateData.description = description;
+
+    const { data, error } = await (serviceSupabase as any)
+      .from('combos')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const memCombo = dbStore.combos.find(c => c.id === id);
+    if (memCombo) {
+      if (isAvailable !== undefined) memCombo.is_available = isAvailable;
+      if (name !== undefined) memCombo.name = name;
+      if (pricePaise !== undefined) memCombo.price_paise = pricePaise;
+      if (isVeg !== undefined) memCombo.dietary = isVeg ? 'veg' : 'non_veg';
+      if (description !== undefined) memCombo.description = description;
+    }
+
+    return NextResponse.json({ success: true, combo: data });
+  } catch (err: any) {
+    const body = await req.json().catch(() => ({}));
+    const combo = dbStore.combos.find(c => c.id === body.id);
+    if (combo) {
+      if (body.isAvailable !== undefined) combo.is_available = body.isAvailable;
+      if (body.name !== undefined) combo.name = body.name;
+      if (body.pricePaise !== undefined) combo.price_paise = body.pricePaise;
+      if (body.isVeg !== undefined) combo.dietary = body.isVeg ? 'veg' : 'non_veg';
+      if (body.description !== undefined) combo.description = body.description;
+    }
+    return NextResponse.json({ success: true, combo });
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   const { errorResponse } = await verifyStaffApiRoute(['owner']);
   if (errorResponse) return errorResponse;
