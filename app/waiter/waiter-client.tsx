@@ -704,7 +704,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                     setIsBillingPreview(false);
                   }}
                   className={`min-h-[110px] sm:min-h-[120px] p-3 text-left border rounded-sm flex flex-col justify-between transition-all active:scale-[0.98] cursor-pointer ${
-                    selectedTableId === tbl.id ? 'ring-2 ring-ink shadow-sm bg-paper-card' : ''
+                    selectedTableId === tbl.id ? 'ring-2 ring-ink bg-paper-card' : ''
                   } ${stateBadge.cardBorder}`}
                 >
                   <div className="flex items-start justify-between gap-1">
@@ -1293,7 +1293,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                                     onClick={() => handleUpdateOrderStatus(order.id, 'served')}
                                     className="w-full min-h-[48px] bg-stone-800 hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
                                   >
-                                    Mark Order Served &#10003;
+                                    Mark served
                                   </button>
                                 </div>
                               )}
@@ -1311,14 +1311,14 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       ) : (
         /* Desktop Split View: Empty state when no table is selected (lg: and above) */
         <aside className="hidden lg:flex lg:w-[460px] xl:w-[500px] 2xl:w-[540px] lg:h-[calc(100vh-120px)] lg:sticky lg:top-0 lg:shrink-0 border-l border-rule bg-paper flex-col justify-center items-center text-center p-8 space-y-3 print:hidden">
-          <div className="w-12 h-12 rounded-full border border-rule flex items-center justify-center text-ink-muted text-lg font-serif">
-            &#9633;
+          <div className="w-10 h-10 border border-rule flex items-center justify-center text-ink-muted text-xs font-serif uppercase tracking-widest font-bold">
+            POS
           </div>
           <h3 className="font-serif text-base font-bold text-ink">
-            Select a Table
+            Select a table
           </h3>
           <p className="text-xs text-ink-muted max-w-xs">
-            Click any table on the restaurant floor to inspect active orders, add items, or generate bill.
+            Tap any table on the floor to view orders, add items, or generate a bill.
           </p>
         </aside>
       )}

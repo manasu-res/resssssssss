@@ -3,32 +3,29 @@ import Link from 'next/link';
 
 export default function HomePage() {
   const sampleTables = [
-    { number: 'Table 1', token: 'tbl-manasu-01', seats: '2 Seats' },
-    { number: 'Table 2', token: 'tbl-manasu-02', seats: '4 Seats' },
-    { number: 'Table 3', token: 'tbl-manasu-03', seats: '4 Seats' },
-    { number: 'Table 4', token: 'tbl-manasu-04', seats: '6 Seats' },
+    { number: 'Table 1', token: 'tbl-manasu-01', seats: '2 seats' },
+    { number: 'Table 2', token: 'tbl-manasu-02', seats: '4 seats' },
+    { number: 'Table 3', token: 'tbl-manasu-03', seats: '4 seats' },
+    { number: 'Table 4', token: 'tbl-manasu-04', seats: '6 seats' },
   ];
 
   return (
-    <div className="min-h-screen bg-paper text-ink p-6 md:p-12 flex flex-col items-center justify-center">
-      <div className="w-full max-w-xl border border-rule bg-paper-card p-6 md:p-8 rounded-sm">
+    <div className="min-h-screen bg-paper text-ink p-4 sm:p-8 flex flex-col items-center justify-center">
+      <div className="w-full max-w-lg border border-rule bg-paper-card p-5 sm:p-7 rounded-sm">
         {/* Header */}
-        <div className="border-b border-rule pb-4 text-center">
+        <div className="border-b border-rule pb-3.5 text-center">
           <span className="text-[11px] uppercase tracking-widest font-semibold text-ink-muted">
             100 Feet Road, Indiranagar, Bengaluru
           </span>
-          <h1 className="font-serif text-3xl font-bold tracking-tight text-ink mt-1">
+          <h1 className="font-serif text-2xl sm:text-3xl font-bold tracking-tight text-ink mt-1">
             Manasu Restaurant
           </h1>
-          <p className="text-xs text-ink-muted mt-1">
-            Ordering &amp; POS Billing Terminal
-          </p>
         </div>
 
-        {/* Section 1: Customer Tables */}
-        <div className="mt-6">
+        {/* Section 1: Tables */}
+        <div className="mt-5">
           <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted mb-2">
-            Customer Table QR Portals (/t/[token])
+            Tables
           </span>
           <div className="grid grid-cols-2 gap-2">
             {sampleTables.map(t => (
@@ -41,17 +38,17 @@ export default function HomePage() {
                   {t.number}
                 </span>
                 <span className="text-[11px] text-ink-muted block mt-0.5">
-                  {t.seats} &bull; Open Menu &rarr;
+                  {t.seats} &middot; Menu &rarr;
                 </span>
               </Link>
             ))}
           </div>
         </div>
 
-        {/* Section 2: Staff Operation Consoles */}
-        <div className="mt-6 pt-5 border-t border-rule/70">
+        {/* Section 2: Staff Terminals */}
+        <div className="mt-5 pt-4 border-t border-rule">
           <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted mb-2">
-            Staff Terminals
+            Staff terminals
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Link
@@ -59,22 +56,22 @@ export default function HomePage() {
               className="p-3 border border-rule bg-white hover:border-ink rounded-sm transition-colors"
             >
               <span className="font-bold text-xs uppercase tracking-wider text-ink block">
-                Waiter POS
+                Waiter
               </span>
-              <span className="text-[11px] text-ink-muted block mt-1">
-                Approve orders, tables &amp; bills
+              <span className="text-[11px] text-ink-muted block mt-0.5">
+                Floor POS
               </span>
             </Link>
 
             <Link
               href="/kitchen"
-              className="p-3 border border-rule bg-pos-panel text-white hover:border-white rounded-sm transition-colors"
+              className="p-3 border border-rule bg-pos-panel text-white hover:border-neutral-500 rounded-sm transition-colors"
             >
               <span className="font-bold text-xs uppercase tracking-wider text-amber-400 block">
-                Kitchen KDS
+                Kitchen
               </span>
-              <span className="text-[11px] text-neutral-300 block mt-1">
-                Live order queue (2m readable)
+              <span className="text-[11px] text-neutral-300 block mt-0.5">
+                Ticket board
               </span>
             </Link>
 
@@ -83,20 +80,20 @@ export default function HomePage() {
               className="p-3 border border-rule bg-white hover:border-ink rounded-sm transition-colors"
             >
               <span className="font-bold text-xs uppercase tracking-wider text-ink block">
-                Owner Admin
+                Admin
               </span>
-              <span className="text-[11px] text-ink-muted block mt-1">
-                Menu, QRs, sales reports
+              <span className="text-[11px] text-ink-muted block mt-0.5">
+                Menu &amp; settings
               </span>
             </Link>
           </div>
         </div>
 
-        {/* Footer info */}
-        <div className="mt-6 pt-4 border-t border-rule text-center flex items-center justify-between text-[11px] text-ink-muted">
-          <span>Single-Restaurant System</span>
+        {/* Footer */}
+        <div className="mt-5 pt-3.5 border-t border-rule flex items-center justify-between text-[11px] text-ink-muted">
+          <span>Single-restaurant system</span>
           <Link href="/login" className="font-semibold text-ink hover:underline">
-            Staff Login &rarr;
+            Staff login &rarr;
           </Link>
         </div>
       </div>

@@ -15,7 +15,7 @@ export function CartBar({ itemCount, totalPaise, onOpenReview }: CartBarProps) {
   return (
     <aside
       aria-label="Cart summary"
-      className="fixed bottom-0 inset-x-0 z-40 bg-paper/95 backdrop-blur-none border-t border-rule"
+      className="fixed bottom-0 inset-x-0 z-40 bg-paper border-t border-rule"
     >
       <div className="max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 flex items-center justify-between">
         <div className="flex flex-col">

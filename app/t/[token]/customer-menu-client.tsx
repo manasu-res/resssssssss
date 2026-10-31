@@ -275,7 +275,6 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
           >
             <DietaryBadge type="veg" size="sm" />
             <span>Veg only</span>
-            {vegOnly ? <span className="text-[10px] ml-0.5 text-paper/80">&#10003;</span> : null}
           </button>
         </div>
 
@@ -332,12 +331,9 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       <main className="py-4">
         {/* Read-Only Notice when table has NO open session */}
         {!hasOpenSession && (
-          <div className="mb-6 p-4 bg-paper-card border border-ink/20 rounded-sm text-center">
-            <p className="font-serif text-sm sm:text-base font-semibold text-ink">
+          <div className="mb-6 p-3.5 bg-paper-card border border-ink/20 rounded-sm text-center">
+            <p className="font-serif text-sm font-semibold text-ink">
               Ask the waiter to open your table to order.
-            </p>
-            <p className="text-[11px] sm:text-xs text-ink-muted mt-0.5">
-              Browse our printed menu card below while your table is being opened.
             </p>
           </div>
         )}
@@ -349,7 +345,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         {filteredCombos.length > 0 && (
           <section id="section-combos" className="mb-8 pt-1 border-b border-rule/50 pb-6">
             <h2 className="font-serif text-xs sm:text-sm font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-3">
-              Signature Combos & Thalis
+              Combos
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
               {filteredCombos.map(combo => {
@@ -410,9 +406,8 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         </div>
 
         {/* Printed Card Footer Note */}
-        <div className="text-center py-8 border-t border-rule/50 mt-10 text-[11px] sm:text-xs text-ink-muted space-y-1">
-          <p className="font-serif italic text-ink/80 text-xs sm:text-sm">Prepared fresh with pure desi ghee & spices</p>
-          <p>Prices inclusive of local preparation &middot; 5% GST applicable on billing</p>
+        <div className="text-center py-6 border-t border-rule/50 mt-10 text-[11px] text-ink-muted">
+          <p>Dishes prepared fresh to order &middot; 5% GST applicable on billing</p>
         </div>
       </main>
 

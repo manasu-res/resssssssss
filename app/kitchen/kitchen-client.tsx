@@ -405,7 +405,7 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
                           onClick={() => handleUpdateStatus(order.id, 'preparing')}
                           className="min-h-[52px] bg-amber-400 hover:bg-amber-300 text-neutral-950 text-base font-black uppercase tracking-wider rounded-sm cursor-pointer transition-colors col-span-2 flex items-center justify-center"
                         >
-                          {updatingId === order.id ? 'Starting...' : 'Start (Preparing)'}
+                          {updatingId === order.id ? 'Starting...' : 'Start'}
                         </button>
                       ) : order.status === 'preparing' ? (
                         /* "Ready" button marks order ready (waiter screen updates live) */
@@ -415,12 +415,12 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
                           onClick={() => handleUpdateStatus(order.id, 'ready')}
                           className="min-h-[52px] bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-base font-black uppercase tracking-wider rounded-sm cursor-pointer transition-colors col-span-2 flex items-center justify-center"
                         >
-                          {updatingId === order.id ? 'Updating...' : 'Ready (Ready to Serve)'}
+                          {updatingId === order.id ? 'Updating...' : 'Ready'}
                         </button>
                       ) : (
                         <div className="col-span-2 p-2.5 bg-emerald-950/80 border border-emerald-500/50 text-center rounded-sm">
                           <span className="text-sm font-black text-emerald-400 uppercase tracking-wider">
-                            Ready for Floor Staff
+                            Ready for waiter
                           </span>
                         </div>
                       )}
