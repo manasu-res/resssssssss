@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
+import { getServerStaffSession } from './session';
 import type { StaffRole } from '@/lib/database.types';
 
 export interface StaffAuthResult {
@@ -12,16 +13,46 @@ export interface StaffAuthResult {
   isActive: boolean;
 }
 
+const OWNER_EMAIL_DEFAULT = 'manasurestaurant@gmail.com';
+
+function isOwnerUser(email?: string | null, metadataRole?: string | null): boolean {
+  if (!email && !metadataRole) return false;
+  const targetEmail = (process.env.OWNER_EMAIL || OWNER_EMAIL_DEFAULT).toLowerCase();
+  return (
+    Boolean(email && email.toLowerCase() === targetEmail) ||
+    metadataRole === 'owner'
+  );
+}
+
 /**
  * Server guard for React Server Component pages (/admin, /waiter, /kitchen).
- * Checks session AND profile in Supabase.
+ * Checks session AND profile.
  * - If not logged in -> redirects to /login.
  * - If account inactive -> redirects to /login.
- * - If role not allowed -> returns null so the page can render the plain "Not allowed" view.
+ * - If role not allowed -> returns 'NOT_ALLOWED'.
  */
 export async function requireStaffPageAuth(
   allowedRoles: StaffRole[]
 ): Promise<StaffAuthResult | 'NOT_ALLOWED'> {
+  // 1. Check if staff session cookie exists (e.g. from /api/auth/login or fast switch)
+  try {
+    const staffSession = await getServerStaffSession();
+    if (staffSession) {
+      if (!allowedRoles.includes(staffSession.role)) {
+        return 'NOT_ALLOWED';
+      }
+      return {
+        userId: staffSession.userId,
+        email: staffSession.email,
+        name: staffSession.fullName,
+        role: staffSession.role,
+        isActive: true,
+      };
+    }
+  } catch {
+    // Continue to Supabase check
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const isRealSupabase =
     url.startsWith('https://') &&
@@ -30,52 +61,75 @@ export async function requireStaffPageAuth(
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.includes('demo');
 
   if (!isRealSupabase) {
-    // Local development fallback
-    const { getServerStaffSession } = await import('./session');
-    const devSession = await getServerStaffSession();
-    if (!devSession) {
-      redirect('/login');
-    }
-    if (!allowedRoles.includes(devSession.role)) {
-      return 'NOT_ALLOWED';
-    }
-    return {
-      userId: devSession.userId,
-      email: devSession.email,
-      name: devSession.fullName,
-      role: devSession.role,
-      isActive: true,
-    };
+    redirect('/login');
   }
 
   const supabase = createServerSupabaseClient();
 
-  // 1. Check Auth Session
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  // 2. Check Supabase Auth Session
+  let user: any = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user) {
+      user = data.user;
+    }
+  } catch {
+    // Failed to query user
+  }
 
-  if (authError || !user) {
+  if (!user) {
     redirect('/login');
   }
 
-  // 2. Fetch Profile from database
-  const { data: profileData, error: profileError } = await (supabase as any)
-    .from('profiles')
-    .select('id, name, role, is_active')
-    .eq('id', user.id)
-    .single();
+  const isOwner = isOwnerUser(user.email, user.user_metadata?.role);
 
-  const profile = profileData as { id: string; name: string; role: StaffRole; is_active: boolean } | null;
+  // 3. Fetch Profile from database
+  let profile: { id: string; name: string; role: StaffRole; is_active: boolean } | null = null;
+  try {
+    const { data: profileData, error: profileError } = await (supabase as any)
+      .from('profiles')
+      .select('id, name, role, is_active')
+      .eq('id', user.id)
+      .single();
 
-  if (profileError || !profile || !profile.is_active) {
-    // If user has no active staff profile, sign them out and redirect to login
-    await supabase.auth.signOut();
+    if (!profileError && profileData) {
+      profile = profileData as any;
+    }
+  } catch {
+    // Ignore error if database schema is initializing
+  }
+
+  // Fallback: If profile table is not initialized yet, but user is the owner
+  if (!profile && isOwner) {
+    profile = {
+      id: user.id,
+      name: user.user_metadata?.name || 'Owner',
+      role: 'owner',
+      is_active: true,
+    };
+
+    // Attempt to upsert profile in background via service role
+    try {
+      const serviceClient = createServiceRoleClient();
+      await (serviceClient as any).from('profiles').upsert({
+        id: user.id,
+        name: user.user_metadata?.name || 'Owner',
+        role: 'owner',
+        is_active: true,
+      });
+    } catch {
+      // Ignore if table does not exist
+    }
+  }
+
+  if (!profile || !profile.is_active) {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
     redirect('/login');
   }
 
-  // 3. Verify Role
+  // 4. Verify Role
   if (!allowedRoles.includes(profile.role as StaffRole)) {
     return 'NOT_ALLOWED';
   }
@@ -100,6 +154,34 @@ export async function verifyStaffApiRoute(
   staff: StaffAuthResult | null;
 }> {
   try {
+    // 1. Check if staff session cookie exists
+    try {
+      const staffSession = await getServerStaffSession();
+      if (staffSession) {
+        if (!allowedRoles.includes(staffSession.role)) {
+          return {
+            errorResponse: NextResponse.json(
+              { error: 'Not allowed. You do not have permission for this action.' },
+              { status: 403 }
+            ),
+            staff: null,
+          };
+        }
+        return {
+          errorResponse: null,
+          staff: {
+            userId: staffSession.userId,
+            email: staffSession.email,
+            name: staffSession.fullName,
+            role: staffSession.role,
+            isActive: true,
+          },
+        };
+      }
+    } catch {
+      // Continue to Supabase check
+    }
+
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const isRealSupabase =
       url.startsWith('https://') &&
@@ -108,45 +190,6 @@ export async function verifyStaffApiRoute(
       !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.includes('demo');
 
     if (!isRealSupabase) {
-      const { getServerStaffSession } = await import('./session');
-      const devSession = await getServerStaffSession();
-      if (!devSession) {
-        return {
-          errorResponse: NextResponse.json(
-            { error: 'Authentication required. Please log in.' },
-            { status: 401 }
-          ),
-          staff: null,
-        };
-      }
-      if (!allowedRoles.includes(devSession.role)) {
-        return {
-          errorResponse: NextResponse.json(
-            { error: 'Not allowed. You do not have permission for this action.' },
-            { status: 403 }
-          ),
-          staff: null,
-        };
-      }
-      return {
-        errorResponse: null,
-        staff: {
-          userId: devSession.userId,
-          email: devSession.email,
-          name: devSession.fullName,
-          role: devSession.role,
-          isActive: true,
-        },
-      };
-    }
-
-    const supabase = createServerSupabaseClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
       return {
         errorResponse: NextResponse.json(
           { error: 'Authentication required. Please log in.' },
@@ -156,15 +199,50 @@ export async function verifyStaffApiRoute(
       };
     }
 
-    const { data: profileData, error: profileError } = await (supabase as any)
-      .from('profiles')
-      .select('id, name, role, is_active')
-      .eq('id', user.id)
-      .single();
+    const supabase = createServerSupabaseClient();
+    let user: any = null;
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user) {
+        user = data.user;
+      }
+    } catch {}
 
-    const profile = profileData as { id: string; name: string; role: StaffRole; is_active: boolean } | null;
+    if (!user) {
+      return {
+        errorResponse: NextResponse.json(
+          { error: 'Authentication required. Please log in.' },
+          { status: 401 }
+        ),
+        staff: null,
+      };
+    }
 
-    if (profileError || !profile || !profile.is_active) {
+    const isOwner = isOwnerUser(user.email, user.user_metadata?.role);
+
+    let profile: { id: string; name: string; role: StaffRole; is_active: boolean } | null = null;
+    try {
+      const { data: profileData, error: profileError } = await (supabase as any)
+        .from('profiles')
+        .select('id, name, role, is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (!profileError && profileData) {
+        profile = profileData as any;
+      }
+    } catch {}
+
+    if (!profile && isOwner) {
+      profile = {
+        id: user.id,
+        name: user.user_metadata?.name || 'Owner',
+        role: 'owner',
+        is_active: true,
+      };
+    }
+
+    if (!profile || !profile.is_active) {
       return {
         errorResponse: NextResponse.json(
           { error: 'Staff account inactive or profile not found.' },

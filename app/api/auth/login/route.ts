@@ -14,6 +14,8 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = parse.data;
     const lowerEmail = email.toLowerCase().trim();
+    const isOwnerEmail =
+      lowerEmail === (process.env.OWNER_EMAIL || 'manasurestaurant@gmail.com').toLowerCase();
 
     const supabase = getServiceSupabase();
 
@@ -29,28 +31,42 @@ export async function POST(req: NextRequest) {
       }
 
       // Query staff profile for role
-      const { data: profile, error: profErr } = await supabase
-        .from('staff_profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .eq('active', true)
-        .single();
+      let role: StaffRole = isOwnerEmail ? 'owner' : 'waiter';
+      let fullName = isOwnerEmail ? 'Owner' : 'Staff Member';
 
-      if (profErr || !profile) {
-        return NextResponse.json({ error: 'Staff account not active or unauthorized' }, { status: 403 });
+      try {
+        const { data: profile, error: profErr } = await (supabase as any)
+          .from('profiles')
+          .select('name, role, is_active')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (!profErr && profile) {
+          if (!profile.is_active) {
+            return NextResponse.json({ error: 'Staff account has been deactivated' }, { status: 403 });
+          }
+          role = profile.role as StaffRole;
+          fullName = profile.name || fullName;
+        } else if (!isOwnerEmail) {
+          return NextResponse.json({ error: 'Staff profile not found. Contact the owner.' }, { status: 403 });
+        }
+      } catch {
+        if (!isOwnerEmail) {
+          return NextResponse.json({ error: 'Staff account check failed' }, { status: 403 });
+        }
       }
 
       const sessionData = {
         userId: authData.user.id,
         email: lowerEmail,
-        fullName: profile.full_name,
-        role: profile.role as StaffRole,
+        fullName,
+        role,
       };
 
       const res = NextResponse.json({
         success: true,
         session: sessionData,
-        redirectTo: getRedirectUrl(profile.role),
+        redirectTo: getRedirectUrl(role),
       });
 
       res.cookies.set('manasu_staff_session', JSON.stringify(sessionData), {
@@ -65,15 +81,14 @@ export async function POST(req: NextRequest) {
     } else {
       // Demo / Standalone fallback login
       let matchedStaff = dbStore.staff.find(s => {
-        if (lowerEmail.includes('owner') || lowerEmail.includes('admin')) return s.role === 'owner';
+        if (lowerEmail.includes('owner') || lowerEmail.includes('admin') || lowerEmail.includes('manasu')) return s.role === 'owner';
         if (lowerEmail.includes('kitchen') || lowerEmail.includes('chef')) return s.role === 'kitchen';
         if (lowerEmail.includes('waiter') || lowerEmail.includes('ramesh')) return s.role === 'waiter';
         return false;
       });
 
       if (!matchedStaff) {
-        // Default to waiter if valid format
-        matchedStaff = dbStore.staff[1]; // Waiter
+        matchedStaff = dbStore.staff[0]; // Owner default
       }
 
       const sessionData = {

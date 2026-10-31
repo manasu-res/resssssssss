@@ -91,7 +91,9 @@ export default function HomePage() {
 
         {/* Footer */}
         <div className="mt-5 pt-3.5 border-t border-rule flex items-center justify-between text-[11px] text-ink-muted">
-          <span>Single-restaurant system</span>
+          <Link href="/admin" className="font-semibold text-ink hover:underline">
+            Owner Admin (/admin) &rarr;
+          </Link>
           <Link href="/login" className="font-semibold text-ink hover:underline">
             Staff login &rarr;
           </Link>
