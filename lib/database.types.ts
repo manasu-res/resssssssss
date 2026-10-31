@@ -40,6 +40,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       categories: {
         Row: {
@@ -60,6 +61,7 @@ export interface Database {
           sort_order?: number;
           created_at?: string;
         };
+        Relationships: [];
       };
       menu_items: {
         Row: {
@@ -79,7 +81,7 @@ export interface Database {
           category_id: string;
           name: string;
           description?: string;
-          price: number; // integer paise
+          price: number;
           is_veg?: boolean;
           is_available?: boolean;
           sort_order?: number;
@@ -98,13 +100,14 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       combos: {
         Row: {
           id: string;
           name: string;
           description: string;
-          price: number; // integer paise
+          price: number;
           is_veg: boolean;
           is_available: boolean;
           sort_order: number;
@@ -130,6 +133,7 @@ export interface Database {
           sort_order?: number;
           created_at?: string;
         };
+        Relationships: [];
       };
       combo_items: {
         Row: {
@@ -147,6 +151,7 @@ export interface Database {
           menu_item_id?: string;
           quantity?: number;
         };
+        Relationships: [];
       };
       dining_tables: {
         Row: {
@@ -170,6 +175,7 @@ export interface Database {
           is_enabled?: boolean;
           created_at?: string;
         };
+        Relationships: [];
       };
       table_sessions: {
         Row: {
@@ -196,6 +202,7 @@ export interface Database {
           opened_at?: string;
           closed_at?: string | null;
         };
+        Relationships: [];
       };
       orders: {
         Row: {
@@ -225,6 +232,7 @@ export interface Database {
           approved_by?: string | null;
           approved_at?: string | null;
         };
+        Relationships: [];
       };
       order_lines: {
         Row: {
@@ -233,7 +241,7 @@ export interface Database {
           menu_item_id: string | null;
           combo_id: string | null;
           name_snapshot: string;
-          price_snapshot: number; // integer paise
+          price_snapshot: number;
           quantity: number;
           note: string;
           created_at: string;
@@ -260,15 +268,16 @@ export interface Database {
           note?: string;
           created_at?: string;
         };
+        Relationships: [];
       };
       bills: {
         Row: {
           id: string;
           session_id: string;
           bill_no: string;
-          subtotal: number; // integer paise
-          tax_amount: number; // integer paise
-          total: number; // integer paise
+          subtotal: number;
+          tax_amount: number;
+          total: number;
           payment_method: PaymentMethod;
           paid_at: string;
           created_by: string | null;
@@ -295,6 +304,7 @@ export interface Database {
           paid_at?: string;
           created_by?: string | null;
         };
+        Relationships: [];
       };
       settings: {
         Row: {
@@ -330,7 +340,35 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: {
+      generate_daily_bill_no: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      is_owner: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      is_waiter: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      is_kitchen: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+    };
+    Enums: {
+      staff_role: StaffRole;
+      table_session_status: TableSessionStatus;
+      order_status: OrderStatus;
+      order_source: OrderSource;
+      payment_method: PaymentMethod;
+    };
+    CompositeTypes: Record<string, never>;
   };
 }

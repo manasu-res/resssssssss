@@ -2,154 +2,155 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createBrowserSupabaseClient } from '@/lib/supabase/browser';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = async (e?: React.FormEvent, directEmail?: string) => {
-    if (e) e.preventDefault();
-    setError('');
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
     setLoading(true);
 
-    const loginEmail = directEmail || email;
-    const loginPassword = password || 'Manasu2026!';
-
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-      });
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+      const isRealSupabase =
+        url.startsWith('https://') &&
+        !url.includes('demo') &&
+        Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) &&
+        !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.includes('demo');
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Authentication failed');
+      if (!isRealSupabase) {
+        // Fallback for local demo environment
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to sign in.');
+        }
+        router.push(data.redirectTo || '/waiter');
+        router.refresh();
+        return;
       }
 
-      router.push(data.redirectTo || '/waiter');
+      const supabase = createBrowserSupabaseClient();
+
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+      if (authError || !authData.user) {
+        throw new Error(authError?.message || 'Invalid email or password.');
+      }
+
+      // Query staff profile for role and active status
+      const { data: profileData, error: profileError } = await (supabase as any)
+        .from('profiles')
+        .select('role, is_active')
+        .eq('id', authData.user.id)
+        .single();
+
+      const profile = profileData as { role: string; is_active: boolean } | null;
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        throw new Error('Staff profile not found. Contact the owner.');
+      }
+
+      if (!profile.is_active) {
+        await supabase.auth.signOut();
+        throw new Error('This account has been deactivated.');
+      }
+
+      // Redirect by role
+      if (profile.role === 'owner') {
+        router.push('/admin');
+      } else if (profile.role === 'kitchen') {
+        router.push('/kitchen');
+      } else {
+        router.push('/waiter');
+      }
       router.refresh();
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Failed to sign in.');
     } finally {
       setLoading(false);
     }
   };
 
-  const quickLogin = (type: 'waiter' | 'kitchen' | 'owner') => {
-    const creds = {
-      waiter: 'waiter@manasu.com',
-      kitchen: 'kitchen@manasu.com',
-      owner: 'owner@manasu.com',
-    };
-    setEmail(creds[type]);
-    setPassword('Manasu2026!');
-    handleLogin(undefined, creds[type]);
-  };
-
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center p-4">
+    <div className="min-h-screen bg-paper text-ink flex items-center justify-center p-4">
       <div className="w-full max-w-sm border border-rule bg-paper-card p-6 rounded-sm">
-        <div className="border-b border-rule pb-3 mb-4">
-          <span className="text-[10px] tracking-widest uppercase font-semibold text-ink-muted">
-            Internal Staff POS
-          </span>
-          <h1 className="font-serif text-2xl font-bold text-ink">
+        {/* Header: Plain and quiet */}
+        <div className="text-center mb-6">
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-ink">
             Manasu Restaurant
           </h1>
-          <p className="text-xs text-ink-muted mt-0.5">
-            Bengaluru &bull; Staff Authentication
+          <p className="text-xs uppercase tracking-widest text-ink-muted mt-0.5">
+            Bengaluru
           </p>
         </div>
 
         {error && (
-          <div className="mb-4 p-2.5 bg-chilli-light border border-chilli text-chilli text-xs rounded-sm">
+          <div className="mb-4 p-2.5 bg-chilli/10 border border-chilli text-chilli text-xs rounded-sm">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-              Staff Email
+            <label
+              htmlFor="staff-email"
+              className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1"
+            >
+              Email
             </label>
             <input
+              id="staff-email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. waiter@manasu.com"
-              className="w-full h-11 px-3 text-sm bg-white border border-rule rounded-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink"
+              className="w-full h-11 px-3 text-sm bg-white border border-rule rounded-sm text-ink focus:outline-none focus:border-ink"
             />
           </div>
 
           <div>
-            <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-              PIN / Password
+            <label
+              htmlFor="staff-password"
+              className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1"
+            >
+              Password
             </label>
             <input
+              id="staff-password"
               type="password"
               required
+              autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full h-11 px-3 text-sm bg-white border border-rule rounded-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink"
+              className="w-full h-11 px-3 text-sm bg-white border border-rule rounded-sm text-ink focus:outline-none focus:border-ink"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-12 bg-ink hover:bg-black text-paper text-sm font-semibold rounded-sm transition-colors mt-2"
+            className="w-full h-11 bg-ink text-paper hover:bg-black disabled:opacity-50 text-xs font-semibold uppercase tracking-wider rounded-sm transition-colors mt-2"
           >
-            {loading ? 'Authenticating...' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
-
-        {/* 1-Tap Quick Staff Role Switcher for Instant Testing */}
-        <div className="mt-6 pt-4 border-t border-rule/70">
-          <span className="block text-[11px] uppercase tracking-wider text-ink-muted font-bold mb-2">
-            Quick Staff Access (Dev / Testing)
-          </span>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => quickLogin('waiter')}
-              className="h-11 px-2 border border-ink/40 bg-white hover:bg-paper-subtle text-xs font-semibold text-ink rounded-sm flex flex-col items-center justify-center leading-tight"
-            >
-              <span>Waiter</span>
-              <span className="text-[9px] text-ink-muted">Floor</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => quickLogin('kitchen')}
-              className="h-11 px-2 border border-ink/40 bg-white hover:bg-paper-subtle text-xs font-semibold text-ink rounded-sm flex flex-col items-center justify-center leading-tight"
-            >
-              <span>Kitchen</span>
-              <span className="text-[9px] text-ink-muted">KDS</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => quickLogin('owner')}
-              className="h-11 px-2 border border-ink/40 bg-white hover:bg-paper-subtle text-xs font-semibold text-ink rounded-sm flex flex-col items-center justify-center leading-tight"
-            >
-              <span>Owner</span>
-              <span className="text-[9px] text-ink-muted">Admin</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 text-center">
-          <a
-            href="/t/tbl-manasu-01"
-            className="text-[11px] text-ink-muted hover:text-ink underline"
-          >
-            Switch to Customer Table Menu &rarr;
-          </a>
-        </div>
       </div>
     </div>
   );
