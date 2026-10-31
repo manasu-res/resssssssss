@@ -123,10 +123,8 @@ export async function GET(req: NextRequest) {
         orders: sessionOrders,
       });
     } else {
-      // Standalone / Demo fallback
-      const table =
-        dbStore.getTableByToken(token) ||
-        dbStore.tables.find(t => t.active_token.includes(token) || token.includes(t.active_token));
+      // Standalone / Demo fallback - strict exact token match
+      const table = dbStore.getTableByToken(token);
 
       if (!table || !table.is_active) {
         return NextResponse.json(
@@ -169,23 +167,25 @@ export async function GET(req: NextRequest) {
         })),
       }));
 
-      const sessionOrders = dbStore.orders
-        .filter(o => o.table_id === table.id && o.status !== 'cancelled')
-        .map(o => ({
-          id: o.id,
-          status: o.status,
-          source: o.source,
-          created_at: o.created_at,
-          order_lines: dbStore.orderItems
-            .filter(i => i.order_id === o.id)
-            .map(i => ({
-              id: i.id,
-              name_snapshot: i.item_name,
-              price_snapshot: i.price_paise,
-              quantity: i.quantity,
-              note: i.notes || '',
-            })),
-        }));
+      const sessionOrders = openSession
+        ? dbStore.orders
+            .filter(o => o.table_id === table.id && o.status !== 'cancelled')
+            .map(o => ({
+              id: o.id,
+              status: o.status,
+              source: o.source,
+              created_at: o.created_at,
+              order_lines: dbStore.orderItems
+                .filter(i => i.order_id === o.id)
+                .map(i => ({
+                  id: i.id,
+                  name_snapshot: i.item_name,
+                  price_snapshot: i.price_paise,
+                  quantity: i.quantity,
+                  note: i.notes || '',
+                })),
+            }))
+        : [];
 
       return NextResponse.json({
         table: {

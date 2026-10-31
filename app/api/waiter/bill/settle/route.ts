@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,6 +150,20 @@ export async function POST(req: NextRequest) {
         .eq('session_id', tableSession.id)
         .neq('status', 'cancelled');
 
+      logAudit({
+        action: 'SETTLE_BILL',
+        actorId: session?.userId,
+        actorName: session?.fullName,
+        actorRole: session?.role,
+        targetId: `Bill #${billNoStr}`,
+        details: {
+          tableId,
+          tableLabel: diningTable.label,
+          totalPaise: total,
+          paymentMethod,
+        },
+      });
+
       return NextResponse.json({
         success: true,
         bill: {
@@ -209,6 +224,19 @@ export async function POST(req: NextRequest) {
           });
         }
       }
+
+      logAudit({
+        action: 'SETTLE_BILL',
+        actorId: session?.userId,
+        actorName: session?.fullName,
+        actorRole: session?.role,
+        targetId: `Bill #${bill.bill_number}`,
+        details: {
+          tableId,
+          totalPaise: bill.final_paise,
+          paymentMethod,
+        },
+      });
 
       return NextResponse.json({
         success: true,

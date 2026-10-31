@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,15 @@ export async function POST(req: NextRequest) {
     if (!billId || !reason) {
       return NextResponse.json({ error: 'billId and cancellation reason are required' }, { status: 400 });
     }
+
+    logAudit({
+      action: 'CANCEL_BILL',
+      actorId: session?.userId,
+      actorName: session?.fullName,
+      actorRole: session?.role,
+      targetId: `Bill #${billId}`,
+      details: { reason },
+    });
 
     const supabase = getServiceSupabase();
     const now = new Date().toISOString();

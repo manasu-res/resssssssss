@@ -3,6 +3,7 @@ import { updateOrderStatusSchema } from '@/lib/validation';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { logAudit } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +19,16 @@ export async function POST(req: NextRequest) {
     }
 
     const { orderId, status } = parse.data;
+
+    logAudit({
+      action: 'UPDATE_ORDER_STATUS',
+      actorId: session?.userId,
+      actorName: session?.fullName,
+      actorRole: session?.role,
+      targetId: `Order #${orderId}`,
+      details: { status, origin: 'kitchen' },
+    });
+
     const supabase = getServiceSupabase();
 
     if (supabase) {

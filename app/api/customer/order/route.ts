@@ -230,10 +230,8 @@ export async function POST(req: NextRequest) {
         },
       });
     } else {
-      // Demo / Local In-Memory Fallback
-      const table =
-        dbStore.getTableByToken(token) ||
-        dbStore.tables.find(t => t.active_token.includes(token) || token.includes(t.active_token));
+      // Demo / Local In-Memory Fallback - strict exact token match
+      const table = dbStore.getTableByToken(token);
 
       if (!table || !table.is_active) {
         return NextResponse.json(

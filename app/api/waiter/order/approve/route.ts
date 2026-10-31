@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,21 @@ export async function POST(req: NextRequest) {
     if (!['approved', 'cancelled', 'served', 'preparing', 'ready'].includes(status)) {
       return NextResponse.json({ error: 'Invalid order status' }, { status: 400 });
     }
+
+    const auditAction = status === 'approved' 
+      ? 'APPROVE_ORDER' 
+      : status === 'cancelled' 
+      ? 'REJECT_ORDER' 
+      : 'UPDATE_ORDER_STATUS';
+
+    logAudit({
+      action: auditAction,
+      actorId: session?.userId,
+      actorName: session?.fullName,
+      actorRole: session?.role,
+      targetId: `Order #${orderId}`,
+      details: { status, reason: reason || null },
+    });
 
     const supabase = getServiceSupabase();
 
