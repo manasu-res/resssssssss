@@ -215,8 +215,8 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   // Token unknown or table disabled
   if (error || !table) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-paper text-ink text-center">
-        <div className="max-w-xs border border-rule p-6 bg-paper-card rounded-sm">
+      <div className="min-h-screen w-full flex items-center justify-center p-6 bg-paper text-ink text-center">
+        <div className="w-full max-w-sm border border-rule p-6 bg-paper-card rounded-sm shadow-none">
           <h2 className="font-serif text-xl font-bold text-ink mb-1">
             Manasu
           </h2>

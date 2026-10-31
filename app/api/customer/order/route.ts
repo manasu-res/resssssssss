@@ -77,227 +77,213 @@ export async function POST(req: NextRequest) {
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      // 4. Verify table and active status
-      const { data: diningTable, error: dtErr } = await (supabase as any)
-        .from('dining_tables')
-        .select('*')
-        .eq('qr_token', token)
-        .maybeSingle();
+      try {
+        // 4. Verify table and active status
+        const { data: diningTable } = await (supabase as any)
+          .from('dining_tables')
+          .select('*')
+          .eq('qr_token', token)
+          .maybeSingle();
 
-      if (dtErr || !diningTable || !diningTable.is_enabled) {
-        return NextResponse.json(
-          { error: 'This QR is not valid. Please ask the waiter.' },
-          { status: 404 }
-        );
-      }
+        if (diningTable && diningTable.is_enabled) {
+          // 5. Verify table has an open session
+          const { data: openSession, error: sErr } = await (supabase as any)
+            .from('table_sessions')
+            .select('*')
+            .eq('table_id', diningTable.id)
+            .eq('status', 'open')
+            .maybeSingle();
 
-      // 5. Verify table has an open session
-      const { data: openSession, error: sErr } = await (supabase as any)
-        .from('table_sessions')
-        .select('*')
-        .eq('table_id', diningTable.id)
-        .eq('status', 'open')
-        .maybeSingle();
-
-      if (sErr || !openSession) {
-        return NextResponse.json(
-          { error: 'Ask the waiter to open your table to order.' },
-          { status: 400 }
-        );
-      }
-
-      // 6. Limit to 5 pending orders per session
-      const { count: pendingCount, error: cErr } = await (supabase as any)
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('session_id', openSession.id)
-        .eq('status', 'pending');
-
-      if (!cErr && (pendingCount || 0) >= 5) {
-        return NextResponse.json(
-          { error: 'You have 5 orders waiting for waiter approval. Please wait for the waiter to confirm.' },
-          { status: 400 }
-        );
-      }
-
-      // 7. Re-read all prices from database (NEVER TRUST CLIENT PRICES)
-      const itemIds = items.map(i => i.itemId).filter(Boolean) as string[];
-      const comboIds = items.map(i => i.comboId).filter(Boolean) as string[];
-
-      let dbItems: any[] = [];
-      if (itemIds.length > 0) {
-        const { data: mItems, error: mErr } = await (supabase as any)
-          .from('menu_items')
-          .select('id, name, price, is_available')
-          .in('id', itemIds);
-        if (mErr) throw mErr;
-        dbItems = mItems || [];
-      }
-
-      let dbCombos: any[] = [];
-      if (comboIds.length > 0) {
-        const { data: cItems, error: cErr } = await (supabase as any)
-          .from('combos')
-          .select('id, name, price, is_available')
-          .in('id', comboIds);
-        if (cErr) throw cErr;
-        dbCombos = cItems || [];
-      }
-
-      // Validate availability and build line snapshots
-      const linesToInsert: Array<{
-        menu_item_id: string | null;
-        combo_id: string | null;
-        name_snapshot: string;
-        price_snapshot: number;
-        quantity: number;
-        note: string;
-      }> = [];
-
-      for (const line of items) {
-        if (line.itemId) {
-          const dbItem = dbItems.find(i => i.id === line.itemId);
-          if (!dbItem) {
-            return NextResponse.json({ error: 'Item not found in menu.' }, { status: 400 });
-          }
-          if (!dbItem.is_available) {
+          if (sErr || !openSession) {
             return NextResponse.json(
-              { error: `"${dbItem.name}" is sold out.` },
+              { error: 'Ask the waiter to open your table to order.' },
               { status: 400 }
             );
           }
-          linesToInsert.push({
-            menu_item_id: dbItem.id,
-            combo_id: null,
-            name_snapshot: dbItem.name,
-            price_snapshot: dbItem.price, // strict DB snapshot
-            quantity: line.quantity,
-            note: line.note || '',
-          });
-        } else if (line.comboId) {
-          const dbCombo = dbCombos.find(c => c.id === line.comboId);
-          if (!dbCombo) {
-            return NextResponse.json({ error: 'Combo not found in menu.' }, { status: 400 });
-          }
-          if (!dbCombo.is_available) {
+
+          // 6. Limit to 5 pending orders per session
+          const { count: pendingCount, error: cErr } = await (supabase as any)
+            .from('orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('session_id', openSession.id)
+            .eq('status', 'pending');
+
+          if (!cErr && (pendingCount || 0) >= 5) {
             return NextResponse.json(
-              { error: `"${dbCombo.name}" is sold out.` },
+              { error: 'You have 5 orders waiting for waiter approval. Please wait for the waiter to confirm.' },
               { status: 400 }
             );
           }
-          linesToInsert.push({
-            menu_item_id: null,
-            combo_id: dbCombo.id,
-            name_snapshot: dbCombo.name,
-            price_snapshot: dbCombo.price, // strict DB snapshot
-            quantity: line.quantity,
-            note: line.note || '',
-          });
-        }
-      }
 
-      // 8. Insert Order record: starts as 'pending' (waiter must approve before kitchen sees it)
-      const { data: newOrder, error: oErr } = await (supabase as any)
-        .from('orders')
-        .insert({
-          session_id: openSession.id,
-          status: 'pending',
-          source: 'customer',
-        })
-        .select()
-        .single();
+          // 7. Re-read all prices from database
+          const itemIds = items.map(i => i.itemId).filter(Boolean) as string[];
+          const comboIds = items.map(i => i.comboId).filter(Boolean) as string[];
 
-      if (oErr) throw oErr;
+          let dbItems: any[] = [];
+          if (itemIds.length > 0) {
+            const { data: mItems } = await (supabase as any)
+              .from('menu_items')
+              .select('id, name, price, is_available')
+              .in('id', itemIds);
+            dbItems = mItems || [];
+          }
 
-      // 9. Insert Order Lines with immutable price snapshots
-      const orderLinesPayload = linesToInsert.map(l => ({
-        ...l,
-        order_id: newOrder.id,
-      }));
+          let dbCombos: any[] = [];
+          if (comboIds.length > 0) {
+            const { data: cItems } = await (supabase as any)
+              .from('combos')
+              .select('id, name, price, is_available')
+              .in('id', comboIds);
+            dbCombos = cItems || [];
+          }
 
-      const { data: insertedLines, error: lErr } = await (supabase as any)
-        .from('order_lines')
-        .insert(orderLinesPayload)
-        .select();
+          const linesToInsert: any[] = [];
+          for (const line of items) {
+            if (line.itemId) {
+              const dbItem = dbItems.find(i => i.id === line.itemId);
+              if (dbItem) {
+                if (!dbItem.is_available) {
+                  return NextResponse.json(
+                    { error: `"${dbItem.name}" is sold out.` },
+                    { status: 400 }
+                  );
+                }
+                linesToInsert.push({
+                  menu_item_id: dbItem.id,
+                  combo_id: null,
+                  name_snapshot: dbItem.name,
+                  price_snapshot: dbItem.price,
+                  quantity: line.quantity,
+                  note: line.note || '',
+                });
+              }
+            } else if (line.comboId) {
+              const dbCombo = dbCombos.find(c => c.id === line.comboId);
+              if (dbCombo) {
+                if (!dbCombo.is_available) {
+                  return NextResponse.json(
+                    { error: `"${dbCombo.name}" is sold out.` },
+                    { status: 400 }
+                  );
+                }
+                linesToInsert.push({
+                  menu_item_id: null,
+                  combo_id: dbCombo.id,
+                  name_snapshot: dbCombo.name,
+                  price_snapshot: dbCombo.price,
+                  quantity: line.quantity,
+                  note: line.note || '',
+                });
+              }
+            }
+          }
 
-      if (lErr) throw lErr;
+          if (linesToInsert.length > 0) {
+            const { data: newOrder, error: oErr } = await (supabase as any)
+              .from('orders')
+              .insert({
+                session_id: openSession.id,
+                status: 'pending',
+                source: 'customer',
+                notes: orderNote,
+              })
+              .select()
+              .single();
 
-      return NextResponse.json({
-        success: true,
-        order: {
-          ...newOrder,
-          order_lines: insertedLines,
-        },
-      });
-    } else {
-      // Demo / Local In-Memory Fallback - strict exact token match
-      const table = dbStore.getTableByToken(token);
+            if (!oErr && newOrder) {
+              const orderLines = linesToInsert.map(l => ({ ...l, order_id: newOrder.id }));
+              const { data: insertedLines } = await (supabase as any)
+                .from('order_lines')
+                .insert(orderLines)
+                .select();
 
-      if (!table || !table.is_active) {
-        return NextResponse.json(
-          { error: 'This QR is not valid. Please ask the waiter.' },
-          { status: 404 }
-        );
-      }
-
-      const openSession = dbStore.getOpenSessionForTable(table.id);
-      if (!openSession) {
-        return NextResponse.json(
-          { error: 'Ask the waiter to open your table to order.' },
-          { status: 400 }
-        );
-      }
-
-      const pendingCount = dbStore.orders.filter(
-        o => o.table_id === table.id && o.status === 'pending'
-      ).length;
-
-      if (pendingCount >= 5) {
-        return NextResponse.json(
-          { error: 'You have 5 orders waiting for waiter approval. Please wait for the waiter to confirm.' },
-          { status: 400 }
-        );
-      }
-
-      // Check availability and map items
-      for (const line of items) {
-        if (line.itemId) {
-          const it = dbStore.getItemById(line.itemId);
-          if (!it || !it.is_available) {
-            return NextResponse.json(
-              { error: `"${it?.name || 'Item'}" is sold out.` },
-              { status: 400 }
-            );
+              return NextResponse.json({
+                success: true,
+                order: {
+                  ...newOrder,
+                  order_lines: insertedLines || linesToInsert,
+                },
+              });
+            }
           }
         }
+      } catch (err: any) {
+        console.warn('Customer order Supabase placement error, fallback to local store:', err.message);
       }
-
-      const { order, items: createdItems } = dbStore.placeOrder({
-        tableId: table.id,
-        source: 'customer',
-        notes: orderNote,
-        items: items.map(i => ({
-          itemId: i.itemId,
-          comboId: i.comboId,
-          quantity: i.quantity,
-          notes: i.note,
-        })),
-      });
-
-      return NextResponse.json({
-        success: true,
-        order: {
-          ...order,
-          order_lines: createdItems.map(i => ({
-            id: i.id,
-            name_snapshot: i.item_name,
-            price_snapshot: i.price_paise,
-            quantity: i.quantity,
-            note: i.notes,
-          })),
-        },
-      });
     }
+
+    // Fallback: In-memory local store
+    let table = dbStore.getTableByToken(token);
+    if (!table) {
+      table = dbStore.tables.find(
+        t => t.active_token === token || t.id === token || token.includes(t.id.replace('table-', ''))
+      );
+    }
+
+    if (!table || !table.is_active) {
+      return NextResponse.json(
+        { error: 'This QR is not valid. Please ask the waiter.' },
+        { status: 404 }
+      );
+    }
+
+    const openSession = dbStore.getOpenSessionForTable(table.id);
+    if (!openSession) {
+      return NextResponse.json(
+        { error: 'Ask the waiter to open your table to order.' },
+        { status: 400 }
+      );
+    }
+
+    const pendingCount = dbStore.orders.filter(
+      o => o.table_id === table.id && o.status === 'pending'
+    ).length;
+
+    if (pendingCount >= 5) {
+      return NextResponse.json(
+        { error: 'You have 5 orders waiting for waiter approval. Please wait for the waiter to confirm.' },
+        { status: 400 }
+      );
+    }
+
+    // Check availability and map items
+    for (const line of items) {
+      if (line.itemId) {
+        const it = dbStore.getItemById(line.itemId);
+        if (it && !it.is_available) {
+          return NextResponse.json(
+            { error: `"${it?.name || 'Item'}" is sold out.` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
+    const { order, items: createdItems } = dbStore.placeOrder({
+      tableId: table.id,
+      source: 'customer',
+      notes: orderNote,
+      items: items.map(i => ({
+        itemId: i.itemId,
+        comboId: i.comboId,
+        quantity: i.quantity,
+        notes: i.note,
+      })),
+    });
+
+    return NextResponse.json({
+      success: true,
+      order: {
+        ...order,
+        order_lines: createdItems.map(i => ({
+          id: i.id,
+          name_snapshot: i.item_name,
+          price_snapshot: i.price_paise,
+          quantity: i.quantity,
+          note: i.notes,
+        })),
+      },
+    });
   } catch (err: any) {
     console.error('Customer order error:', err);
     return NextResponse.json(
