@@ -291,34 +291,80 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   // Table Session Actions
   const handleOpenTable = async (tableId: string) => {
+    // Optimistic UI update
+    setTables(prev =>
+      prev.map(t =>
+        t.id === tableId
+          ? { ...t, state: 'Open', opened_at: new Date().toISOString() }
+          : t
+      )
+    );
     try {
-      const res = await fetch('/api/waiter/table/open', {
+      await fetch('/api/waiter/table/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId }),
       });
-      if (res.ok) {
-        await fetchTables();
-      }
+      await fetchTables();
+    } catch (err) {
+      console.error('Error opening table:', err);
+    }
+  };
+
+  const handleOpenAndTakeOrder = async (tableId: string) => {
+    // Optimistic UI update
+    setTables(prev =>
+      prev.map(t =>
+        t.id === tableId
+          ? { ...t, state: 'Open', opened_at: new Date().toISOString() }
+          : t
+      )
+    );
+    setIsAddingItems(true);
+    setIsBillingPreview(false);
+    try {
+      await fetch('/api/waiter/table/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId }),
+      });
+      await fetchTables();
     } catch (err) {
       console.error('Error opening table:', err);
     }
   };
 
   const handleVacateTable = async (tableId: string) => {
-    if (!confirm('Vacate this table and close current session?')) return;
+    if (!confirm('Vacate this table and clear active session?')) return;
+    // Optimistic UI update
+    setTables(prev =>
+      prev.map(t =>
+        t.id === tableId
+          ? {
+              ...t,
+              state: 'Free',
+              session: null,
+              opened_at: null,
+              orders: [],
+              activeOrders: [],
+              running_total_paise: 0,
+              currentTotalPaise: 0,
+              pending_orders_count: 0,
+              pendingOrdersCount: 0,
+            }
+          : t
+      )
+    );
+    setSelectedTableId(null);
+    setIsAddingItems(false);
+    setIsBillingPreview(false);
     try {
-      const res = await fetch('/api/waiter/table/vacate', {
+      await fetch('/api/waiter/table/vacate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId, resetToken: true }),
       });
-      if (res.ok) {
-        setSelectedTableId(null);
-        setIsAddingItems(false);
-        setIsBillingPreview(false);
-        await fetchTables();
-      }
+      await fetchTables();
     } catch (err) {
       console.error('Error vacating table:', err);
     }
@@ -326,17 +372,31 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   // Order Approval & Status Actions
   const handleUpdateOrderStatus = async (orderId: string, status: 'approved' | 'cancelled' | 'served', reason?: string) => {
+    // Optimistic UI update
+    setTables(prev =>
+      prev.map(t => {
+        const updatedOrders = (t.orders || []).map((o: any) =>
+          o.id === orderId ? { ...o, status } : o
+        );
+        const updatedActive = (t.activeOrders || []).map((o: any) =>
+          o.id === orderId ? { ...o, status } : o
+        );
+        return {
+          ...t,
+          orders: updatedOrders,
+          activeOrders: updatedActive,
+        };
+      })
+    );
     try {
-      const res = await fetch('/api/waiter/order/approve', {
+      await fetch('/api/waiter/order/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, status, reason }),
       });
-      if (res.ok) {
-        setRejectingOrderId(null);
-        setCustomReason('');
-        await fetchTables();
-      }
+      setRejectingOrderId(null);
+      setCustomReason('');
+      await fetchTables();
     } catch (err) {
       console.error('Error updating order status:', err);
     }
@@ -804,25 +864,35 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
               </button>
             </div>
 
-            {/* Case 1: Table is Free (No session) -> ONE BIG "Open table" button */}
+            {/* Case 1: Table is Free (No session) -> Take Order or Open Table */}
             {selectedTable.state === 'Free' ? (
               <div className="p-6 flex-1 flex flex-col justify-center items-center text-center space-y-4">
-                <div className="max-w-xs space-y-2">
+                <div className="max-w-xs space-y-1.5">
                   <h3 className="font-serif text-lg font-bold text-ink">
                     Table is vacant
                   </h3>
                   <p className="text-xs text-ink-muted">
-                    Open this table to start a dining session. Customers will then be able to scan the QR code to order.
+                    Take an order directly or open this table for customer QR ordering.
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenTable(selectedTable.id)}
-                  className="w-full max-w-xs min-h-[56px] h-14 bg-ink hover:bg-black text-paper text-sm font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer flex items-center justify-center"
-                >
-                  Open table
-                </button>
+                <div className="w-full max-w-xs space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAndTakeOrder(selectedTable.id)}
+                    className="w-full min-h-[52px] bg-chilli hover:bg-chilli-hover text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    + Take order now
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTable(selectedTable.id)}
+                    className="w-full min-h-[44px] bg-white border border-ink/40 hover:bg-paper-subtle text-ink text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer flex items-center justify-center"
+                  >
+                    Open table (QR order)
+                  </button>
+                </div>
               </div>
             ) : (
               /* Case 2: Table is Open, Order waiting, or Billed */
@@ -837,11 +907,11 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                     }}
                     className={`min-h-[48px] flex-1 px-3 border text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
                       isAddingItems
-                        ? 'bg-ink text-paper border-ink'
-                        : 'bg-white text-ink border-rule hover:bg-paper-subtle'
+                        ? 'bg-chilli text-white border-chilli font-black'
+                        : 'bg-white text-ink border-ink/50 hover:bg-paper-subtle'
                     }`}
                   >
-                    {isAddingItems ? 'Hide Menu' : '+ Add items'}
+                    {isAddingItems ? 'Close Menu' : '+ Take order'}
                   </button>
 
                   <button
@@ -856,7 +926,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         : 'bg-white text-ink border-rule hover:bg-paper-subtle'
                     }`}
                   >
-                    {isBillingPreview ? 'View Orders' : 'Generate bill'}
+                    {isBillingPreview ? 'View orders' : 'Generate bill'}
                   </button>
 
                   <button
