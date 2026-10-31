@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS public.bills (
   subtotal INT NOT NULL CHECK (subtotal >= 0),
   tax_percent NUMERIC NOT NULL DEFAULT 0,
   tax_amount INT NOT NULL CHECK (tax_amount >= 0) DEFAULT 0,
+  discount_amount INT NOT NULL CHECK (discount_amount >= 0) DEFAULT 0,
   total INT NOT NULL CHECK (total >= 0),
   payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'upi', 'card')),
   gstin TEXT,

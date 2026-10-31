@@ -67,7 +67,7 @@ export function ThermalReceipt({ bill, autoPrint = true, onClose }: ThermalRecei
   const address = bill.settings?.address || '100 Feet Road, Indiranagar, Bengaluru';
   const phone = bill.settings?.phone || '+91 80 2520 1980';
   const gstin = bill.settings?.gstin || '29AABCM8291Q1ZP';
-  const taxPercent = bill.settings?.tax_percent ?? 5;
+  const taxPercent = bill.settings?.tax_percent ?? 0;
   const billFooter = bill.settings?.bill_footer || 'Thank you for dining at Manasu! Visit again.';
 
   const items = bill.items || [];

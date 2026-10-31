@@ -163,6 +163,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const [markingPaid, setMarkingPaid] = useState(false);
   const [activeBill, setActiveBill] = useState<any | null>(null);
 
+  // Discount options: 'none' | 'percent' | 'flat'
+  const [discountType, setDiscountType] = useState<'none' | 'percent' | 'flat'>('none');
+  const [discountValue, setDiscountValue] = useState<number>(0);
+
   // Past Bills Drawer state
   const [isPastBillsOpen, setIsPastBillsOpen] = useState(false);
   const [pastBills, setPastBills] = useState<any[]>([]);
@@ -514,6 +518,15 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const handleMarkPaid = async () => {
     if (!selectedTable || markingPaid) return;
     setMarkingPaid(true);
+
+    let finalDiscountPaise = 0;
+    if (discountType === 'percent' && discountValue > 0) {
+      finalDiscountPaise = Math.round(previewSubtotal * (discountValue / 100));
+    } else if (discountType === 'flat' && discountValue > 0) {
+      finalDiscountPaise = Math.round(discountValue * 100);
+    }
+    finalDiscountPaise = Math.min(previewSubtotal, Math.max(0, finalDiscountPaise));
+
     try {
       const res = await fetch('/api/waiter/bill/settle', {
         method: 'POST',
@@ -521,6 +534,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         body: JSON.stringify({
           tableId: selectedTable.id,
           paymentMethod,
+          discountPaise: finalDiscountPaise,
         }),
       });
 
@@ -528,6 +542,8 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       if (res.ok && data.bill) {
         setIsBillingPreview(false);
         setSelectedTableId(null);
+        setDiscountType('none');
+        setDiscountValue(0);
         // Open the print view with auto-print
         setActiveBill(data.bill);
         await fetchTables();
@@ -611,7 +627,15 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const previewSubtotal = previewGroupedLines.reduce((sum, l) => sum + l.price * l.quantity, 0);
   const previewTaxPercent = settings?.tax_percent ?? 0;
   const previewTaxAmount = Math.round(previewSubtotal * (previewTaxPercent / 100));
-  const previewGrandTotal = previewSubtotal + previewTaxAmount;
+
+  let discountPaise = 0;
+  if (discountType === 'percent' && discountValue > 0) {
+    discountPaise = Math.round(previewSubtotal * (discountValue / 100));
+  } else if (discountType === 'flat' && discountValue > 0) {
+    discountPaise = Math.round(discountValue * 100);
+  }
+  discountPaise = Math.min(previewSubtotal, Math.max(0, discountPaise));
+  const previewGrandTotal = Math.max(0, previewSubtotal + previewTaxAmount - discountPaise);
 
   return (
     <div className="min-h-screen bg-paper text-ink flex flex-col font-sans select-none pb-12">
@@ -1005,6 +1029,114 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         )}
                       </div>
 
+                      {/* Discount Options */}
+                      <div className="p-2.5 border border-rule bg-paper-subtle rounded-sm space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] uppercase tracking-wider font-bold text-ink">
+                            Discount
+                          </span>
+                          {discountPaise > 0 && (
+                            <span className="text-xs font-bold text-chilli">
+                              -{formatRupees(discountPaise)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Quick Discount Percent & None Buttons */}
+                        <div className="grid grid-cols-4 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('none'); setDiscountValue(0); }}
+                            className={`min-h-[36px] px-2 text-xs font-semibold rounded-sm border cursor-pointer ${
+                              discountType === 'none'
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            None
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('percent'); setDiscountValue(5); }}
+                            className={`min-h-[36px] px-2 text-xs font-semibold rounded-sm border cursor-pointer ${
+                              discountType === 'percent' && discountValue === 5
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            5%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('percent'); setDiscountValue(10); }}
+                            className={`min-h-[36px] px-2 text-xs font-semibold rounded-sm border cursor-pointer ${
+                              discountType === 'percent' && discountValue === 10
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            10%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('percent'); setDiscountValue(15); }}
+                            className={`min-h-[36px] px-2 text-xs font-semibold rounded-sm border cursor-pointer ${
+                              discountType === 'percent' && discountValue === 15
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            15%
+                          </button>
+                        </div>
+
+                        {/* Flat Discount Shortcuts & Custom Amount */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('flat'); setDiscountValue(50); }}
+                            className={`min-h-[36px] px-2.5 text-xs font-semibold rounded-sm border shrink-0 cursor-pointer ${
+                              discountType === 'flat' && discountValue === 50
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            ₹50 OFF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDiscountType('flat'); setDiscountValue(100); }}
+                            className={`min-h-[36px] px-2.5 text-xs font-semibold rounded-sm border shrink-0 cursor-pointer ${
+                              discountType === 'flat' && discountValue === 100
+                                ? 'bg-ink text-paper border-ink'
+                                : 'bg-white text-ink border-rule hover:bg-paper'
+                            }`}
+                          >
+                            ₹100 OFF
+                          </button>
+                          <div className="relative flex-1">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-ink-muted">₹</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Custom ₹"
+                              value={discountType === 'flat' && ![50, 100].includes(discountValue) && discountValue > 0 ? discountValue : ''}
+                              onChange={e => {
+                                const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                if (val > 0) {
+                                  setDiscountType('flat');
+                                  setDiscountValue(val);
+                                } else {
+                                  setDiscountType('none');
+                                  setDiscountValue(0);
+                                }
+                              }}
+                              className="w-full pl-6 pr-2 py-1.5 text-xs border border-rule rounded-sm bg-white text-ink font-semibold focus:outline-none focus:border-ink"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Subtotal, Tax with GSTIN, Grand Total */}
                       <div className="space-y-1.5 text-xs">
                         <div className="flex justify-between">
@@ -1013,6 +1145,17 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                             {formatRupees(previewSubtotal)}
                           </span>
                         </div>
+
+                        {discountPaise > 0 && (
+                          <div className="flex justify-between text-xs text-chilli font-semibold">
+                            <span>
+                              Discount {discountType === 'percent' ? `(${discountValue}%)` : ''}:
+                            </span>
+                            <span className="tabular-nums font-bold">
+                              -{formatRupees(discountPaise)}
+                            </span>
+                          </div>
+                        )}
 
                         {previewTaxPercent > 0 && (
                           <div className="flex justify-between text-xs">

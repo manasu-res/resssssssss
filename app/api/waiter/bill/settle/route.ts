@@ -111,24 +111,36 @@ export async function POST(req: NextRequest) {
             }
 
             // 7. Insert bill record
-            const { data: bill, error: bErr } = await (supabase as any)
+            const insertData: any = {
+              session_id: tableSession.id,
+              bill_no: billNoStr,
+              table_label: diningTable.label,
+              subtotal,
+              tax_percent: taxPercent,
+              tax_amount: taxAmount,
+              total,
+              payment_method: paymentMethod,
+              gstin: settings?.gstin || null,
+              status: 'paid',
+              created_by: session?.userId || null,
+              paid_at: new Date().toISOString(),
+            };
+            if (discountPaise > 0) {
+              insertData.discount_amount = discountPaise;
+            }
+
+            let { data: bill, error: bErr } = await (supabase as any)
               .from('bills')
-              .insert({
-                session_id: tableSession.id,
-                bill_no: billNoStr,
-                table_label: diningTable.label,
-                subtotal,
-                tax_percent: taxPercent,
-                tax_amount: taxAmount,
-                total,
-                payment_method: paymentMethod,
-                gstin: settings?.gstin || null,
-                status: 'paid',
-                created_by: session?.userId || null,
-                paid_at: new Date().toISOString(),
-              })
+              .insert(insertData)
               .select()
               .single();
+
+            if (bErr && discountPaise > 0) {
+              delete insertData.discount_amount;
+              const retry = await (supabase as any).from('bills').insert(insertData).select().single();
+              bill = retry.data;
+              bErr = retry.error;
+            }
 
             if (!bErr && bill) {
               // 8. Close session and free table
@@ -160,6 +172,7 @@ export async function POST(req: NextRequest) {
                   ...bill,
                   bill_number: bill.bill_no,
                   subtotal_paise: bill.subtotal,
+                  discount_paise: discountPaise,
                   tax_paise: bill.tax_amount,
                   final_paise: bill.total,
                   payment_method: bill.payment_method,
