@@ -6,7 +6,7 @@ import KitchenClient from './kitchen-client';
 export const dynamic = 'force-dynamic';
 
 export default async function KitchenPage() {
-  const auth = await requireStaffPageAuth(['owner', 'kitchen', 'waiter']);
+  const auth = await requireStaffPageAuth(['owner', 'kitchen']);
 
   if (auth === 'NOT_ALLOWED') {
     return <NotAllowed requiredRoles={['owner', 'kitchen']} />;
