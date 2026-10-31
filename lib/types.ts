@@ -115,6 +115,7 @@ export interface Bill {
     quantity: number;
     notes?: string;
     note?: string;
+    [key: string]: any;
   }>;
   is_cancelled?: boolean;
   cancelled_by?: string | null;

@@ -132,8 +132,127 @@ class RestaurantStore {
       created_at: order2Time,
     };
 
-    this.orders.push(order1, order2);
-    this.orderItems.push(item1, item2, item3, item4);
+    // Seed a cancelled order to spot problems in reports
+    const cancelledTime = new Date(Date.now() - 45 * 60000).toISOString();
+    const cancelledOrder: Order = {
+      id: 'demo-order-cancelled-1',
+      order_number: 99,
+      table_id: 'table-03',
+      status: 'cancelled',
+      source: 'customer',
+      notes: '[Rejected: Item out of stock - Neer Dosa]',
+      total_paise: 18000,
+      created_at: cancelledTime,
+      updated_at: cancelledTime,
+    };
+
+    const cancelledItem: OrderItem = {
+      id: 'demo-item-c1',
+      order_id: 'demo-order-cancelled-1',
+      item_id: 'item-neer-dosa',
+      item_name: 'Neer Dosa (3 pcs)',
+      price_paise: 9000,
+      quantity: 2,
+      dietary: 'veg',
+      status: 'cancelled',
+      notes: 'Customer left due to wait time',
+      created_at: cancelledTime,
+    };
+
+    this.orders.push(order1, order2, cancelledOrder);
+    this.orderItems.push(item1, item2, item3, item4, cancelledItem);
+
+    // Seed historical demo bills for reports
+    const today = new Date();
+    const yesterday = new Date(Date.now() - 24 * 3600000);
+    const twoDaysAgo = new Date(Date.now() - 48 * 3600000);
+    const threeDaysAgo = new Date(Date.now() - 72 * 3600000);
+
+    const demoBill1: Bill = {
+      id: 'bill-demo-01',
+      bill_number: '0001',
+      table_id: 'table-01',
+      subtotal_paise: 42000,
+      tax_paise: 2100,
+      discount_paise: 0,
+      final_paise: 44100,
+      payment_method: 'upi',
+      created_at: new Date(today.getTime() - 2 * 3600000).toISOString(),
+      table: this.tables[0],
+      items: [
+        { id: 'bi-1', order_id: 'b-o-1', item_name: 'Davangere Benne Dosa', price_paise: 9500, quantity: 2, dietary: 'veg', status: 'served', created_at: today.toISOString() },
+        { id: 'bi-2', order_id: 'b-o-1', item_name: 'Shivaji Military Donne Biryani', price_paise: 24000, quantity: 1, dietary: 'non_veg', status: 'served', created_at: today.toISOString() },
+      ],
+    };
+
+    const demoBill2: Bill = {
+      id: 'bill-demo-02',
+      bill_number: '0002',
+      table_id: 'table-05',
+      subtotal_paise: 35000,
+      tax_paise: 1750,
+      discount_paise: 0,
+      final_paise: 36750,
+      payment_method: 'cash',
+      created_at: new Date(today.getTime() - 1 * 3600000).toISOString(),
+      table: this.tables[4],
+      items: [
+        { id: 'bi-3', order_id: 'b-o-2', item_name: 'South Bengaluru Breakfast Combo', price_paise: 11000, quantity: 2, dietary: 'veg', status: 'served', created_at: today.toISOString() },
+        { id: 'bi-4', order_id: 'b-o-2', item_name: 'Degree Filter Coffee', price_paise: 3500, quantity: 2, dietary: 'veg', status: 'served', created_at: today.toISOString() },
+      ],
+    };
+
+    const demoBill3: Bill = {
+      id: 'bill-demo-03',
+      bill_number: '0089',
+      table_id: 'table-02',
+      subtotal_paise: 72000,
+      tax_paise: 3600,
+      discount_paise: 0,
+      final_paise: 75600,
+      payment_method: 'card',
+      created_at: yesterday.toISOString(),
+      table: this.tables[1],
+      items: [
+        { id: 'bi-5', order_id: 'b-o-3', item_name: 'Military Donne Biryani Feast', price_paise: 38000, quantity: 1, dietary: 'non_veg', status: 'served', created_at: yesterday.toISOString() },
+        { id: 'bi-6', order_id: 'b-o-3', item_name: 'Kundapura Chicken Ghee Roast', price_paise: 26000, quantity: 1, dietary: 'non_veg', status: 'served', created_at: yesterday.toISOString() },
+      ],
+    };
+
+    const demoBill4: Bill = {
+      id: 'bill-demo-04',
+      bill_number: '0084',
+      table_id: 'table-06',
+      subtotal_paise: 58000,
+      tax_paise: 2900,
+      discount_paise: 0,
+      final_paise: 60900,
+      payment_method: 'upi',
+      created_at: twoDaysAgo.toISOString(),
+      table: this.tables[5],
+      items: [
+        { id: 'bi-7', order_id: 'b-o-4', item_name: 'Mutton Donne Biryani', price_paise: 31000, quantity: 1, dietary: 'non_veg', status: 'served', created_at: twoDaysAgo.toISOString() },
+        { id: 'bi-8', order_id: 'b-o-4', item_name: 'Degree Filter Coffee', price_paise: 3500, quantity: 4, dietary: 'veg', status: 'served', created_at: twoDaysAgo.toISOString() },
+      ],
+    };
+
+    const demoBill5: Bill = {
+      id: 'bill-demo-05',
+      bill_number: '0078',
+      table_id: 'table-03',
+      subtotal_paise: 88000,
+      tax_paise: 4400,
+      discount_paise: 0,
+      final_paise: 92400,
+      payment_method: 'cash',
+      created_at: threeDaysAgo.toISOString(),
+      table: this.tables[2],
+      items: [
+        { id: 'bi-9', order_id: 'b-o-5', item_name: 'Military Donne Biryani Feast', price_paise: 38000, quantity: 2, dietary: 'non_veg', status: 'served', created_at: threeDaysAgo.toISOString() },
+      ],
+    };
+
+    this.bills.push(demoBill1, demoBill2, demoBill3, demoBill4, demoBill5);
   }
 
   // Table Helpers

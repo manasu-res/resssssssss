@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { formatRupees } from '@/lib/format';
 import { DietaryBadge } from '@/components/ui/dietary-badge';
 import type { StaffAuthResult } from '@/lib/auth/guard';
+import { AdminReportsView } from '@/components/admin/admin-reports-view';
 
 type AdminTab = 'menu' | 'combos' | 'tables' | 'staff' | 'settings' | 'reports';
 
@@ -70,11 +71,12 @@ interface SettingsData {
 
 interface AdminClientProps {
   staff: StaffAuthResult;
+  initialTab?: AdminTab;
 }
 
-export default function AdminClient({ staff: currentOwner }: AdminClientProps) {
+export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }: AdminClientProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<AdminTab>('menu');
+  const [tab, setTab] = useState<AdminTab>(initialTab);
   const [loading, setLoading] = useState(true);
 
   // 1. Menu State
@@ -1514,24 +1516,7 @@ export default function AdminClient({ staff: currentOwner }: AdminClientProps) {
             </form>
           </div>
         ) : tab === 'reports' ? (
-          /* ================================================================ */
-          /* 6. REPORTS (REPORTS COMING LATER)                                 */
-          /* ================================================================ */
-          <div className="space-y-4 max-w-xl">
-            <div className="border-b border-rule pb-2">
-              <h2 className="font-serif text-xl font-bold text-ink">
-                Reports
-              </h2>
-            </div>
-            <div className="p-6 border border-rule bg-white rounded-sm text-center">
-              <p className="text-sm font-semibold text-ink">
-                Reports coming later.
-              </p>
-              <p className="text-xs text-ink-muted mt-1">
-                Historical order analytics, daily cashier sales reconciliations, and tax exports will appear here.
-              </p>
-            </div>
-          </div>
+          <AdminReportsView />
         ) : null}
       </main>
     </div>
