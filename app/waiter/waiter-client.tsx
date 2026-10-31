@@ -183,6 +183,9 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   // Preserve tables that were opened in this browser session so polling never flips them back to 'Free'
   const locallyOpenedTablesRef = useRef<Record<string, number>>({});
 
+  // Preserve order status changes made locally (approved, served, cancelled) so background polls never glitch back
+  const localOrderStatusRef = useRef<Record<string, string>>({});
+
   const fetchTables = useCallback(async () => {
     try {
       const res = await fetch('/api/waiter/tables');
@@ -193,14 +196,30 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       const data = await res.json();
       const rawTables: WaiterTable[] = data.tables || [];
       const loadedTables = rawTables.map(t => {
-        if (locallyOpenedTablesRef.current[t.id] && t.state === 'Free') {
-          return {
-            ...t,
-            state: 'Open' as const,
-            opened_at: t.opened_at || new Date().toISOString(),
-          };
-        }
-        return t;
+        const effectiveState = (locallyOpenedTablesRef.current[t.id] && t.state === 'Free')
+          ? ('Open' as const)
+          : t.state;
+
+        const updatedOrders = (t.orders || []).map((o: any) => {
+          const override = localOrderStatusRef.current[o.id];
+          return override ? { ...o, status: override } : o;
+        });
+
+        const updatedActive = (t.activeOrders || []).map((o: any) => {
+          const override = localOrderStatusRef.current[o.id];
+          return override ? { ...o, status: override } : o;
+        });
+
+        const pendingCount = updatedOrders.filter((o: any) => o.status === 'pending').length;
+
+        return {
+          ...t,
+          state: effectiveState,
+          orders: updatedOrders,
+          activeOrders: updatedActive,
+          pending_orders_count: pendingCount,
+          pendingOrdersCount: pendingCount,
+        };
       });
       setTables(loadedTables);
 
@@ -390,6 +409,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
   // Order Approval & Status Actions
   const handleUpdateOrderStatus = async (orderId: string, status: 'approved' | 'cancelled' | 'served', reason?: string) => {
+    localOrderStatusRef.current[orderId] = status;
     // Optimistic UI update
     setTables(prev =>
       prev.map(t => {
@@ -399,10 +419,13 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         const updatedActive = (t.activeOrders || []).map((o: any) =>
           o.id === orderId ? { ...o, status } : o
         );
+        const pendingCount = updatedOrders.filter((o: any) => o.status === 'pending').length;
         return {
           ...t,
           orders: updatedOrders,
           activeOrders: updatedActive,
+          pending_orders_count: pendingCount,
+          pendingOrdersCount: pendingCount,
         };
       })
     );

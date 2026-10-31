@@ -76,6 +76,9 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
   // Track previous order IDs to detect new tickets for soft sound
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
 
+  // Preserve order status changes made in this session so polling never resets them
+  const localKitchenStatusRef = useRef<Record<string, 'preparing' | 'ready'>>({});
+
   // Clock ticker every 10 seconds for real-time minute counters
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 10000);
@@ -90,7 +93,11 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
         return;
       }
       const data = await res.json();
-      const loadedOrders: KitchenOrder[] = data.orders || [];
+      const rawOrders: KitchenOrder[] = data.orders || [];
+      const loadedOrders = rawOrders.map(o => {
+        const override = localKitchenStatusRef.current[o.id];
+        return override ? { ...o, status: override } : o;
+      });
 
       // Detect newly arrived approved tickets for soft chime
       if (prevOrderIdsRef.current.size > 0) {
@@ -146,6 +153,8 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
   }, [fetchOrders]);
 
   const handleUpdateStatus = async (orderId: string, status: 'preparing' | 'ready') => {
+    localKitchenStatusRef.current[orderId] = status;
+    setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, status } : o)));
     setUpdatingId(orderId);
     try {
       const res = await fetch('/api/kitchen/order/status', {
