@@ -27,6 +27,12 @@ class RestaurantStore {
   public combos: Combo[] = [...INITIAL_COMBOS];
   public tables: RestaurantTable[] = [...INITIAL_TABLES];
   public staff: StaffProfile[] = [...INITIAL_STAFF];
+  public sessions: Array<{ id: string; table_id: string; status: 'open' | 'billed' | 'closed'; opened_at: string }> = [
+    { id: 'sess-01', table_id: 'table-01', status: 'open', opened_at: new Date().toISOString() },
+    { id: 'sess-02', table_id: 'table-02', status: 'open', opened_at: new Date().toISOString() },
+    { id: 'sess-04', table_id: 'table-04', status: 'open', opened_at: new Date().toISOString() },
+    // Table 3 has NO open session by default to test read-only mode!
+  ];
   public orders: Order[] = [];
   public orderItems: OrderItem[] = [];
   public bills: Bill[] = [];
@@ -131,6 +137,24 @@ class RestaurantStore {
   }
 
   // Table Helpers
+  public getOpenSessionForTable(tableId: string) {
+    return this.sessions.find(s => s.table_id === tableId && s.status === 'open');
+  }
+
+  public openTableSession(tableId: string) {
+    const existing = this.getOpenSessionForTable(tableId);
+    if (existing) return existing;
+    const newSession = {
+      id: `sess-${Date.now()}`,
+      table_id: tableId,
+      status: 'open' as const,
+      opened_at: new Date().toISOString(),
+    };
+    this.sessions.push(newSession);
+    this.updateTableStatus(tableId, 'occupied');
+    return newSession;
+  }
+
   public getTableByToken(token: string): RestaurantTable | undefined {
     return this.tables.find(t => t.active_token === token && t.is_active);
   }

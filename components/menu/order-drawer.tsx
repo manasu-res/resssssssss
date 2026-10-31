@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { MenuItem, Combo } from '@/lib/types';
 import { formatRupees } from '@/lib/format';
 import { DietaryBadge } from '../ui/dietary-badge';
 
 export interface CartItem {
   id: string; // item id or combo id
   type: 'item' | 'combo';
-  item?: MenuItem;
-  combo?: Combo;
+  item?: any;
+  combo?: any;
   quantity: number;
+  note?: string;
   notes?: string;
 }
 
@@ -21,6 +21,7 @@ interface OrderDrawerProps {
   tableNumber: string;
   cart: CartItem[];
   onUpdateQuantity: (id: string, delta: number) => void;
+  onUpdateNote?: (id: string, note: string) => void;
   onOrderSuccess: (order: any) => void;
 }
 
@@ -31,6 +32,7 @@ export function OrderDrawer({
   tableNumber,
   cart,
   onUpdateQuantity,
+  onUpdateNote,
   onOrderSuccess,
 }: OrderDrawerProps) {
   const [orderNotes, setOrderNotes] = useState('');
@@ -40,8 +42,11 @@ export function OrderDrawer({
   if (!isOpen) return null;
 
   const totalPaise = cart.reduce((sum, ci) => {
-    const price = ci.type === 'item' ? ci.item?.price_paise || 0 : ci.combo?.price_paise || 0;
-    return sum + price * ci.quantity;
+    const rawPrice =
+      ci.type === 'item'
+        ? ci.item?.price ?? ci.item?.price_paise ?? 0
+        : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
+    return sum + rawPrice * ci.quantity;
   }, 0);
 
   const handlePlaceOrder = async () => {
@@ -51,13 +56,15 @@ export function OrderDrawer({
 
     try {
       const payload = {
-        tableToken,
+        token: tableToken,
+        tableToken: tableToken,
+        orderNote: orderNotes.trim(),
         notes: orderNotes.trim(),
         items: cart.map(ci => ({
           itemId: ci.type === 'item' ? ci.id : undefined,
           comboId: ci.type === 'combo' ? ci.id : undefined,
           quantity: ci.quantity,
-          notes: ci.notes || '',
+          note: ci.note || ci.notes || '',
         })),
       };
 
@@ -85,7 +92,7 @@ export function OrderDrawer({
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end bg-ink/60">
       <div
-        className="w-full max-w-lg mx-auto bg-paper text-ink border-t border-rule max-h-[88vh] flex flex-col"
+        className="w-full max-w-lg mx-auto bg-paper text-ink border-t border-rule max-h-[88vh] flex flex-col shadow-none"
         style={{ borderRadius: '4px 4px 0 0' }}
       >
         {/* Header */}
@@ -95,12 +102,13 @@ export function OrderDrawer({
               Your order
             </h2>
             <p className="text-xs text-ink-muted">
-              {tableNumber} &middot; Sent straight to kitchen after waiter approval
+              {tableNumber} &middot; Sent to the waiter for confirmation
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close order drawer"
             className="w-8 h-8 flex items-center justify-center border border-rule/80 rounded-sm text-sm text-ink hover:bg-paper-subtle"
           >
             &times;
@@ -116,22 +124,29 @@ export function OrderDrawer({
           ) : (
             cart.map(ci => {
               const name = ci.type === 'item' ? ci.item?.name : ci.combo?.name;
-              const price = ci.type === 'item' ? ci.item?.price_paise || 0 : ci.combo?.price_paise || 0;
-              const dietary = ci.type === 'item' ? ci.item?.dietary || 'veg' : ci.combo?.dietary || 'veg';
+              const rawPrice =
+                ci.type === 'item'
+                  ? ci.item?.price ?? ci.item?.price_paise ?? 0
+                  : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
+              const isVeg =
+                ci.type === 'item'
+                  ? ci.item?.is_veg ?? ci.item?.dietary === 'veg'
+                  : ci.combo?.is_veg ?? ci.combo?.dietary === 'veg';
+              const itemNote = ci.note || ci.notes || '';
 
               return (
-                <div key={ci.id} className="py-2 border-b border-rule/50 last:border-b-0">
+                <div key={ci.id} className="py-2.5 border-b border-rule/50 last:border-b-0">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <DietaryBadge type={dietary} size="sm" />
+                      <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size="sm" />
                       <span className="text-sm font-medium text-ink truncate">
                         {name}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs font-semibold tabular-nums text-ink">
-                        {formatRupees(price * ci.quantity)}
+                        {formatRupees(rawPrice * ci.quantity)}
                       </span>
 
                       <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-7">
@@ -139,6 +154,7 @@ export function OrderDrawer({
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, -1)}
                           className="w-6 h-full flex items-center justify-center text-ink text-xs font-bold hover:bg-paper-subtle"
+                          aria-label={`Decrease ${name}`}
                         >
                           -
                         </button>
@@ -149,12 +165,42 @@ export function OrderDrawer({
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, 1)}
                           className="w-6 h-full flex items-center justify-center text-ink text-xs font-bold hover:bg-paper-subtle"
+                          aria-label={`Increase ${name}`}
                         >
                           +
                         </button>
                       </div>
                     </div>
                   </div>
+
+                  {/* Note for this item */}
+                  {itemNote ? (
+                    <div className="mt-1 pl-5 flex items-center justify-between text-[11px] text-ink-muted">
+                      <span className="italic">Note: {itemNote}</span>
+                      {onUpdateNote && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateNote(ci.id, '')}
+                          className="text-[10px] underline hover:text-ink"
+                        >
+                          Remove note
+                        </button>
+                      )}
+                    </div>
+                  ) : onUpdateNote ? (
+                    <div className="mt-1 pl-5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const note = prompt('Add note for this item (e.g. less spicy):');
+                          if (note !== null) onUpdateNote(ci.id, note.trim());
+                        }}
+                        className="text-[11px] text-ink-muted underline decoration-dotted hover:text-ink"
+                      >
+                        + Add item note
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -163,14 +209,14 @@ export function OrderDrawer({
           {cart.length > 0 && (
             <div className="pt-2">
               <label htmlFor="order-drawer-notes" className="block text-xs uppercase tracking-wider text-ink-muted font-medium mb-1">
-                Special instructions (optional)
+                Special instructions for table (optional)
               </label>
               <input
                 id="order-drawer-notes"
                 type="text"
                 value={orderNotes}
                 onChange={e => setOrderNotes(e.target.value)}
-                placeholder="e.g. Less spicy, extra coconut chutney"
+                placeholder="e.g. Please bring water glasses, less spicy"
                 maxLength={200}
                 className="w-full text-xs px-3 py-2 bg-white border border-rule rounded-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-chilli"
               />

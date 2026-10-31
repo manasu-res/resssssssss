@@ -12,96 +12,198 @@ export async function GET(req: NextRequest) {
 
     const ipLimit = rateLimit(`menu-ip:${ip}`, 60, 60);
     if (!ipLimit.success) {
-      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+      return NextResponse.json({ error: 'Too many requests. Please wait a moment.' }, { status: 429 });
     }
 
     const { searchParams } = new URL(req.url);
     const token = searchParams.get('token');
 
     if (!token) {
-      return NextResponse.json({ error: 'Table token is required' }, { status: 400 });
+      return NextResponse.json({ error: 'This QR is not valid. Please ask the waiter.' }, { status: 400 });
     }
 
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      const { data: table, error: tErr } = await supabase
-        .from('restaurant_tables')
-        .select('id, table_number, seat_capacity, status')
-        .eq('active_token', token)
-        .eq('is_active', true)
-        .single();
+      // 1. Look up table by qr_token in dining_tables
+      const { data: diningTable, error: dtErr } = await (supabase as any)
+        .from('dining_tables')
+        .select('*')
+        .eq('qr_token', token)
+        .maybeSingle();
 
-      if (tErr || !table) {
-        return NextResponse.json({ error: 'Table not found or invalid QR' }, { status: 404 });
+      if (dtErr || !diningTable || !diningTable.is_enabled) {
+        return NextResponse.json(
+          { error: 'This QR is not valid. Please ask the waiter.' },
+          { status: 404 }
+        );
       }
 
-      const { data: categories } = await supabase
-        .from('menu_categories')
+      // 2. Check for active open session
+      const { data: openSession, error: sErr } = await (supabase as any)
+        .from('table_sessions')
         .select('*')
-        .eq('is_active', true)
+        .eq('table_id', diningTable.id)
+        .eq('status', 'open')
+        .maybeSingle();
+
+      const hasOpenSession = Boolean(openSession && !sErr);
+
+      // 3. Fetch categories
+      const { data: categories } = await (supabase as any)
+        .from('categories')
+        .select('*')
         .order('sort_order', { ascending: true });
 
-      const { data: items } = await supabase
+      // 4. Fetch menu items (include sold out items so customer sees "Sold out" on menu card)
+      const { data: items } = await (supabase as any)
         .from('menu_items')
         .select('*')
-        .eq('is_available', true)
         .order('sort_order', { ascending: true });
 
-      const { data: combos } = await supabase
+      // 5. Fetch combos with items
+      const { data: combos } = await (supabase as any)
         .from('combos')
         .select('*')
-        .eq('is_available', true);
+        .order('sort_order', { ascending: true });
 
-      // Get active orders for this table
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('*, items:order_items(*)')
-        .eq('table_id', table.id)
-        .neq('status', 'cancelled')
-        .order('created_at', { ascending: false });
+      const { data: comboItems } = await (supabase as any)
+        .from('combo_items')
+        .select('*, menu_item:menu_items(id, name, price, is_veg)');
 
-      return NextResponse.json({
-        table,
-        categories: categories || [],
-        items: items || [],
-        combos: combos || [],
-        activeOrders: orders || [],
+      const formattedCombos = (combos || []).map((c: any) => {
+        const included = (comboItems || [])
+          .filter((ci: any) => ci.combo_id === c.id)
+          .map((ci: any) => ({
+            id: ci.menu_item_id,
+            name: ci.menu_item?.name || '',
+            quantity: ci.quantity,
+          }));
+        return {
+          ...c,
+          includedItems: included,
+        };
       });
-    } else {
-      // In-memory store fallback
-      const table = dbStore.getTableByToken(token);
-      if (!table) {
-        return NextResponse.json({ error: 'Table not found or invalid QR' }, { status: 404 });
+
+      // 6. Fetch placed orders for this session with order_lines for live status tracking
+      let sessionOrders: any[] = [];
+      if (openSession) {
+        const { data: orders } = await (supabase as any)
+          .from('orders')
+          .select(`
+            id,
+            status,
+            source,
+            created_at,
+            order_lines:order_lines (
+              id,
+              name_snapshot,
+              price_snapshot,
+              quantity,
+              note
+            )
+          `)
+          .eq('session_id', openSession.id)
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false });
+
+        sessionOrders = orders || [];
       }
 
-      const categories = dbStore.getActiveCategories();
-      const items = dbStore.getAvailableItems();
-      const combos = dbStore.combos.filter(c => c.is_available);
-      const activeOrders = dbStore.orders
+      return NextResponse.json({
+        table: {
+          id: diningTable.id,
+          label: diningTable.label,
+        },
+        hasOpenSession,
+        session: openSession || null,
+        categories: categories || [],
+        items: items || [],
+        combos: formattedCombos || [],
+        orders: sessionOrders,
+      });
+    } else {
+      // Standalone / Demo fallback
+      const table =
+        dbStore.getTableByToken(token) ||
+        dbStore.tables.find(t => t.active_token.includes(token) || token.includes(t.active_token));
+
+      if (!table || !table.is_active) {
+        return NextResponse.json(
+          { error: 'This QR is not valid. Please ask the waiter.' },
+          { status: 404 }
+        );
+      }
+
+      const openSession = dbStore.getOpenSessionForTable(table.id);
+      const hasOpenSession = Boolean(openSession);
+
+      const categories = dbStore.categories.map(c => ({
+        id: c.id,
+        name: c.name,
+        sort_order: c.sort_order,
+      }));
+
+      const items = dbStore.items.map(i => ({
+        id: i.id,
+        category_id: i.category_id,
+        name: i.name,
+        description: i.description,
+        price: i.price_paise,
+        is_veg: i.dietary === 'veg',
+        is_available: i.is_available,
+        sort_order: i.sort_order,
+      }));
+
+      const combos = dbStore.combos.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        price: c.price_paise,
+        is_veg: c.dietary === 'veg',
+        is_available: c.is_available,
+        includedItems: (c.items || []).map(ci => ({
+          id: ci.id,
+          name: ci.name,
+          quantity: ci.quantity,
+        })),
+      }));
+
+      const sessionOrders = dbStore.orders
         .filter(o => o.table_id === table.id && o.status !== 'cancelled')
         .map(o => ({
-          ...o,
-          items: dbStore.orderItems.filter(i => i.order_id === o.id),
+          id: o.id,
+          status: o.status,
+          source: o.source,
+          created_at: o.created_at,
+          order_lines: dbStore.orderItems
+            .filter(i => i.order_id === o.id)
+            .map(i => ({
+              id: i.id,
+              name_snapshot: i.item_name,
+              price_snapshot: i.price_paise,
+              quantity: i.quantity,
+              note: i.notes || '',
+            })),
         }));
 
       return NextResponse.json({
         table: {
           id: table.id,
-          table_number: table.table_number,
-          seat_capacity: table.seat_capacity,
-          status: table.status,
+          label: table.table_number,
         },
+        hasOpenSession,
+        session: openSession || null,
         categories,
         items,
         combos,
-        activeOrders,
+        orders: sessionOrders,
       });
     }
   } catch (err: any) {
-    console.error('Menu fetch error:', err);
+    console.error('Customer menu error:', err);
     return NextResponse.json(
-      { error: err.message || 'Failed to fetch menu' },
+      { error: err.message || 'Failed to load menu.' },
       { status: 500 }
     );
   }
