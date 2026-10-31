@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper-bg: #F6F1E7;
+    --paper-card: #FBF8F3;
+    --ink: #1F1B16;
+    --ink-muted: #6B6357;
+    --border-rule: #DCD4C5;
+    --chilli: #A32A1B;
+  }
+
+  body {
+    color: var(--ink);
+    background-color: var(--paper-bg);
+    font-family: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, .font-serif {
+    font-family: var(--font-fraunces), Georgia, serif;
+  }
+}
+
+/* Print styles for Thermal Receipt (58mm / 80mm) */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-receipt, #thermal-receipt * {
+    visibility: visible;
+  }
+  #thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 78mm;
+    margin: 0;
+    padding: 2mm;
+    color: #000000;
+    background: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+}
