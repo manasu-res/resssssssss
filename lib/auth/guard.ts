@@ -38,14 +38,15 @@ export async function requireStaffPageAuth(
   try {
     const staffSession = await getServerStaffSession();
     if (staffSession) {
-      if (!allowedRoles.includes(staffSession.role)) {
+      const effectiveRole: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
+      if (!allowedRoles.includes(effectiveRole)) {
         return 'NOT_ALLOWED';
       }
       return {
         userId: staffSession.userId,
         email: staffSession.email,
         name: staffSession.fullName,
-        role: staffSession.role,
+        role: effectiveRole,
         isActive: true,
       };
     }
@@ -158,7 +159,8 @@ export async function verifyStaffApiRoute(
     try {
       const staffSession = await getServerStaffSession();
       if (staffSession) {
-        if (!allowedRoles.includes(staffSession.role)) {
+        const effectiveRole: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
+        if (!allowedRoles.includes(effectiveRole)) {
           return {
             errorResponse: NextResponse.json(
               { error: 'Not allowed. You do not have permission for this action.' },
@@ -173,7 +175,7 @@ export async function verifyStaffApiRoute(
             userId: staffSession.userId,
             email: staffSession.email,
             name: staffSession.fullName,
-            role: staffSession.role,
+            role: effectiveRole,
             isActive: true,
           },
         };

@@ -530,8 +530,12 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
       if (res.ok) {
         fetchStaff();
       } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to update status');
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 403) {
+          alert('Session switched or expired. If you logged in as Waiter/Kitchen in another tab, please Sign out and log back in as Owner.');
+        } else {
+          alert(data.error || 'Failed to update status');
+        }
       }
     } catch (err) {
       console.error('Error toggling staff status:', err);
