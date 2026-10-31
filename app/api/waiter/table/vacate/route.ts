@@ -3,6 +3,8 @@ import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerStaffSession();
@@ -18,29 +20,32 @@ export async function POST(req: NextRequest) {
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      const updateData: any = { status: 'vacant' };
+      // Close any active session for this table
+      await (supabase as any)
+        .from('table_sessions')
+        .update({
+          status: 'closed',
+          closed_at: new Date().toISOString(),
+        })
+        .eq('table_id', tableId)
+        .in('status', ['open', 'billed']);
+
+      // Optionally rotate token
       if (resetToken) {
         const randomHex = Math.random().toString(36).substring(2, 8);
-        updateData.active_token = `tbl-manasu-${randomHex}`;
+        await (supabase as any)
+          .from('dining_tables')
+          .update({ qr_token: `tbl-manasu-${randomHex}` })
+          .eq('id', tableId);
       }
 
-      const { data: table, error } = await supabase
-        .from('restaurant_tables')
-        .update(updateData)
-        .eq('id', tableId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return NextResponse.json({ success: true, table });
+      return NextResponse.json({ success: true });
     } else {
+      dbStore.closeTableSession(tableId);
       if (resetToken) {
         dbStore.resetTableToken(tableId);
-      } else {
-        dbStore.updateTableStatus(tableId, 'vacant');
       }
-      const table = dbStore.getTableById(tableId);
-      return NextResponse.json({ success: true, table });
+      return NextResponse.json({ success: true });
     }
   } catch (err: any) {
     console.error('Vacate table error:', err);

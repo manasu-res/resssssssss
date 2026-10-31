@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateOrderStatusSchema } from '@/lib/validation';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,33 +13,41 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const parse = updateOrderStatusSchema.safeParse(body);
-    if (!parse.success) {
-      return NextResponse.json({ error: 'Invalid order parameters' }, { status: 400 });
+    const { orderId, status, reason } = body;
+
+    if (!orderId || !status) {
+      return NextResponse.json({ error: 'orderId and status are required' }, { status: 400 });
     }
 
-    const { orderId, status } = parse.data;
+    if (!['approved', 'cancelled', 'served', 'preparing', 'ready'].includes(status)) {
+      return NextResponse.json({ error: 'Invalid order status' }, { status: 400 });
+    }
+
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      const { data: updatedOrder, error: oErr } = await supabase
+      const updatePayload: any = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (status === 'approved') {
+        updatePayload.approved_by = session?.userId || null;
+        updatePayload.approved_at = new Date().toISOString();
+      }
+
+      if (status === 'cancelled' && reason) {
+        updatePayload.rejection_reason = reason;
+      }
+
+      const { data: updatedOrder, error: oErr } = await (supabase as any)
         .from('orders')
-        .update({
-          status,
-          waiter_id: session?.userId || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', orderId)
         .select()
         .single();
 
       if (oErr) throw oErr;
-
-      // Update status on all line items of this order as well
-      await supabase
-        .from('order_items')
-        .update({ status })
-        .eq('order_id', orderId);
 
       return NextResponse.json({ success: true, order: updatedOrder });
     } else {
@@ -46,10 +55,16 @@ export async function POST(req: NextRequest) {
       if (!updated) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
+      if (status === 'cancelled' && reason) {
+        updated.notes = updated.notes ? `${updated.notes} [Rejected: ${reason}]` : `[Rejected: ${reason}]`;
+      }
       return NextResponse.json({ success: true, order: updated });
     }
   } catch (err: any) {
-    console.error('Approve order error:', err);
-    return NextResponse.json({ error: err.message || 'Failed to approve order' }, { status: 500 });
+    console.error('Approve/update order status error:', err);
+    return NextResponse.json(
+      { error: err.message || 'Failed to update order status' },
+      { status: 500 }
+    );
   }
 }

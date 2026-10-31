@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { settleBillSchema } from '@/lib/validation';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,91 +13,143 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const parse = settleBillSchema.safeParse(body);
-    if (!parse.success) {
-      return NextResponse.json(
-        { error: parse.error.errors.map(e => e.message).join(', ') },
-        { status: 400 }
-      );
+    const { tableId, paymentMethod = 'upi', discountPaise = 0 } = body;
+
+    if (!tableId) {
+      return NextResponse.json({ error: 'tableId is required' }, { status: 400 });
     }
 
-    const { tableId, paymentMethod, discountPaise } = parse.data;
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      const { data: table, error: tErr } = await supabase
-        .from('restaurant_tables')
+      // 1. Get dining table
+      const { data: diningTable, error: dtErr } = await (supabase as any)
+        .from('dining_tables')
         .select('*')
         .eq('id', tableId)
         .single();
 
-      if (tErr || !table) {
+      if (dtErr || !diningTable) {
         return NextResponse.json({ error: 'Table not found' }, { status: 404 });
       }
 
-      // Fetch active table orders
-      const { data: orders, error: oErr } = await supabase
-        .from('orders')
-        .select('*, items:order_items(*)')
+      // 2. Find open or billed session
+      const { data: tableSession, error: sErr } = await (supabase as any)
+        .from('table_sessions')
+        .select('*')
         .eq('table_id', tableId)
+        .in('status', ['open', 'billed'])
+        .order('opened_at', { ascending: false })
+        .maybeSingle();
+
+      if (sErr || !tableSession) {
+        return NextResponse.json({ error: 'No active session found for this table' }, { status: 400 });
+      }
+
+      // 3. Find non-cancelled orders for this session with order lines
+      const { data: orders, error: oErr } = await (supabase as any)
+        .from('orders')
+        .select(`
+          id,
+          status,
+          order_lines:order_lines (
+            id,
+            name_snapshot,
+            price_snapshot,
+            quantity
+          )
+        `)
+        .eq('session_id', tableSession.id)
         .neq('status', 'cancelled');
 
       if (oErr || !orders || orders.length === 0) {
-        return NextResponse.json({ error: 'No active orders to bill for this table' }, { status: 400 });
+        return NextResponse.json({ error: 'No active orders on this table to bill' }, { status: 400 });
       }
 
-      const subtotalPaise = orders.reduce((sum, o) => sum + (o.total_paise || 0), 0);
-      const taxPaise = Math.round(subtotalPaise * 0.05);
-      const finalPaise = Math.max(0, subtotalPaise + taxPaise - discountPaise);
+      // 4. Calculate subtotal
+      let subtotal = 0;
+      const allLines: any[] = [];
+      for (const order of orders) {
+        for (const line of order.order_lines || []) {
+          subtotal += line.price_snapshot * line.quantity;
+          allLines.push(line);
+        }
+      }
 
-      // Create bill
-      const { data: bill, error: bErr } = await supabase
+      // Fetch tax_percent from settings
+      const { data: settings } = await (supabase as any)
+        .from('settings')
+        .select('tax_percent')
+        .maybeSingle();
+
+      const taxPercent = settings?.tax_percent ?? 5;
+      const taxAmount = Math.round(subtotal * (taxPercent / 100));
+      const total = Math.max(0, subtotal + taxAmount - discountPaise);
+
+      // Generate daily bill number: count of bills today + 1
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+
+      const { count: todayBillsCount } = await (supabase as any)
+        .from('bills')
+        .select('id', { count: 'exact', head: true })
+        .gte('paid_at', todayStart.toISOString());
+
+      const billNoNumber = (todayBillsCount || 0) + 1;
+      const billNoStr = String(billNoNumber).padStart(4, '0');
+
+      // Insert Bill
+      const { data: bill, error: bErr } = await (supabase as any)
         .from('bills')
         .insert({
-          table_id: tableId,
-          subtotal_paise: subtotalPaise,
-          tax_paise: taxPaise,
-          discount_paise: discountPaise,
-          final_paise: finalPaise,
+          session_id: tableSession.id,
+          bill_no: billNoStr,
+          subtotal,
+          tax_amount: taxAmount,
+          total,
           payment_method: paymentMethod,
-          settled_by: session?.userId || null,
+          paid_at: new Date().toISOString(),
+          created_by: session?.userId || null,
         })
         .select()
         .single();
 
       if (bErr) throw bErr;
 
-      // Link bill with orders
-      const billOrderRows = orders.map(o => ({
-        bill_id: bill.id,
-        order_id: o.id,
-      }));
-      await supabase.from('bill_orders').insert(billOrderRows);
+      // Update table session status to 'billed'
+      await (supabase as any)
+        .from('table_sessions')
+        .update({ status: 'billed' })
+        .eq('id', tableSession.id);
 
       // Mark orders as served
-      await supabase
+      await (supabase as any)
         .from('orders')
         .update({ status: 'served' })
-        .eq('table_id', tableId)
+        .eq('session_id', tableSession.id)
         .neq('status', 'cancelled');
-
-      // Mark table as billed
-      await supabase
-        .from('restaurant_tables')
-        .update({ status: 'billed' })
-        .eq('id', tableId);
-
-      const allItems = orders.flatMap(o => o.items || []);
 
       return NextResponse.json({
         success: true,
         bill: {
           ...bill,
-          table,
-          items: allItems,
+          bill_number: bill.bill_no,
+          subtotal_paise: bill.subtotal,
+          tax_paise: bill.tax_amount,
+          final_paise: bill.total,
+          table: {
+            table_number: diningTable.label,
+          },
+          items: allLines.map(l => ({
+            id: l.id,
+            item_name: l.name_snapshot,
+            price_paise: l.price_snapshot,
+            quantity: l.quantity,
+          })),
         },
       });
     } else {
+      // In-memory store
       const bill = dbStore.settleBill({
         tableId,
         paymentMethod,
@@ -110,7 +163,10 @@ export async function POST(req: NextRequest) {
       });
     }
   } catch (err: any) {
-    console.error('Settle bill error:', err);
-    return NextResponse.json({ error: err.message || 'Failed to settle bill' }, { status: 500 });
+    console.error('Bill settle/generate error:', err);
+    return NextResponse.json(
+      { error: err.message || 'Failed to generate bill' },
+      { status: 500 }
+    );
   }
 }

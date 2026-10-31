@@ -1,49 +1,154 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { RestaurantTable, Order, MenuItem, MenuCategory, Bill } from '@/lib/types';
 import { formatRupees, formatTimeAgo } from '@/lib/format';
 import { DietaryBadge } from '@/components/ui/dietary-badge';
 import { ThermalReceipt } from '@/components/billing/thermal-receipt';
 import type { StaffAuthResult } from '@/lib/auth/guard';
+import { createClient } from '@/lib/supabase/client';
 
-interface TableWithActiveOrders extends RestaurantTable {
-  activeOrders: Order[];
-  pendingOrdersCount: number;
+export interface OrderLineItem {
+  id: string;
+  item_name?: string;
+  name_snapshot?: string;
+  price_paise?: number;
+  price_snapshot?: number;
+  quantity: number;
+  notes?: string;
+  note?: string;
+}
+
+export interface TableOrder {
+  id: string;
+  order_number?: number;
+  status: 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  source?: 'customer' | 'waiter';
+  notes?: string;
+  created_at: string;
+  total_paise?: number;
+  order_lines?: OrderLineItem[];
+  items?: OrderLineItem[];
+}
+
+export interface WaiterTable {
+  id: string;
+  label: string;
+  table_number: string;
+  qr_token: string;
+  state: 'Free' | 'Open' | 'Order waiting' | 'Billed';
+  session: { id: string; status: string; opened_at: string } | null;
+  opened_at: string | null;
+  running_total_paise: number;
   currentTotalPaise: number;
+  pending_orders_count: number;
+  pendingOrdersCount: number;
+  orders: TableOrder[];
+  activeOrders: TableOrder[];
+}
+
+interface MenuItemData {
+  id: string;
+  category_id?: string;
+  name: string;
+  description?: string;
+  price?: number;
+  price_paise: number;
+  dietary?: 'veg' | 'non_veg';
+  is_veg?: boolean;
+  is_available?: boolean;
+}
+
+interface ComboData {
+  id: string;
+  name: string;
+  description?: string;
+  price?: number;
+  price_paise: number;
+  dietary?: 'veg' | 'non_veg';
+  is_veg?: boolean;
+  is_available?: boolean;
+}
+
+interface CategoryData {
+  id: string;
+  name: string;
+  sort_order: number;
 }
 
 interface WaiterClientProps {
   staff: StaffAuthResult;
 }
 
+// Web Audio API notification chime (synthesized 2-tone restaurant bell, works offline, no external file)
+function playChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+
+    const now = ctx.currentTime;
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5
+    gain1.gain.setValueAtTime(0.3, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.12); // A5
+    gain2.gain.setValueAtTime(0.3, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.55);
+  } catch {
+    // Audio context may be restricted before user interaction
+  }
+}
+
 export default function WaiterClient({ staff: currentStaff }: WaiterClientProps) {
   const router = useRouter();
-  const [tables, setTables] = useState<TableWithActiveOrders[]>([]);
+  const [tables, setTables] = useState<WaiterTable[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTable, setSelectedTable] = useState<TableWithActiveOrders | null>(null);
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
-  // Menu data for taking verbal orders directly
-  const [categories, setCategories] = useState<MenuCategory[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('');
+  // Filter: 'all', 'waiting', 'open', 'billed', 'free'
+  const [filter, setFilter] = useState<'all' | 'waiting' | 'open' | 'billed' | 'free'>('all');
+
+  // Menu data for taking verbal orders
+  const [categories, setCategories] = useState<CategoryData[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItemData[]>([]);
+  const [combos, setCombos] = useState<ComboData[]>([]);
+  const [activeCategoryTab, setActiveCategoryTab] = useState<string>('all');
 
   // Waiter add-order state
   const [isAddingItems, setIsAddingItems] = useState(false);
-  const [orderCart, setOrderCart] = useState<Array<{ item: MenuItem; quantity: number }>>([]);
+  const [orderCart, setOrderCart] = useState<Array<{ id: string; type: 'item' | 'combo'; name: string; price: number; quantity: number }>>([]);
   const [orderNotes, setOrderNotes] = useState('');
   const [submittingOrder, setSubmittingOrder] = useState(false);
 
   // Settlement & Thermal Receipt state
   const [isSettling, setIsSettling] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi' | 'card'>('upi');
+  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'cash' | 'card'>('upi');
   const [discountRupees, setDiscountRupees] = useState('');
   const [settlingBill, setSettlingBill] = useState(false);
-  const [activeBill, setActiveBill] = useState<Bill | null>(null);
+  const [activeBill, setActiveBill] = useState<any | null>(null);
 
-  // Filter
-  const [tableFilter, setTableFilter] = useState<'all' | 'occupied' | 'pending' | 'vacant'>('all');
+  // Reject order modal state
+  const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('Item out of stock');
+  const [customReason, setCustomReason] = useState('');
+
+  // Previous pending count to detect new incoming orders for chime
+  const prevPendingCountRef = useRef<number>(0);
 
   const fetchTables = useCallback(async () => {
     try {
@@ -53,29 +158,35 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         return;
       }
       const data = await res.json();
-      setTables(data.tables || []);
+      const loadedTables: WaiterTable[] = data.tables || [];
+      setTables(loadedTables);
 
-      if (selectedTable) {
-        const updated = (data.tables || []).find((t: TableWithActiveOrders) => t.id === selectedTable.id);
-        if (updated) setSelectedTable(updated);
+      // Total pending orders across all tables
+      const totalPending = loadedTables.reduce(
+        (sum, t) => sum + (t.pending_orders_count || t.pendingOrdersCount || 0),
+        0
+      );
+
+      // Trigger audio cue if new pending orders arrived
+      if (totalPending > prevPendingCountRef.current && prevPendingCountRef.current >= 0) {
+        playChime();
       }
+      prevPendingCountRef.current = totalPending;
     } catch (err) {
       console.error('Failed to fetch tables:', err);
     } finally {
       setLoading(false);
     }
-  }, [router, selectedTable]);
+  }, [router]);
 
   const fetchMenu = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/menu');
+      const res = await fetch('/api/waiter/menu');
       if (res.ok) {
         const data = await res.json();
         setCategories(data.categories || []);
         setMenuItems(data.items || []);
-        if (data.categories?.length > 0) {
-          setActiveCategory(data.categories[0].id);
-        }
+        setCombos(data.combos || []);
       }
     } catch (err) {
       console.error('Failed to fetch menu:', err);
@@ -85,43 +196,126 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   useEffect(() => {
     fetchTables();
     fetchMenu();
-    const interval = setInterval(fetchTables, 5000);
-    return () => clearInterval(interval);
+
+    // 1. Supabase Realtime subscription
+    let channel: any = null;
+    try {
+      const supabase = createClient();
+      channel = supabase
+        .channel('waiter-realtime-orders')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
+          if (payload.eventType === 'INSERT' && (payload.new as any)?.status === 'pending') {
+            playChime();
+          }
+          fetchTables();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'table_sessions' }, () => {
+          fetchTables();
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('Realtime subscription skipped or unavailable:', e);
+    }
+
+    // 2. High-reliability polling fallback every 4s
+    const interval = setInterval(fetchTables, 4000);
+
+    return () => {
+      clearInterval(interval);
+      if (channel) {
+        try {
+          channel.unsubscribe();
+        } catch {}
+      }
+    };
   }, [fetchTables, fetchMenu]);
 
-  // Order approval
-  const handleApproveOrder = async (orderId: string) => {
+  const selectedTable = tables.find(t => t.id === selectedTableId) || null;
+
+  // Table Session Actions
+  const handleOpenTable = async (tableId: string) => {
+    try {
+      const res = await fetch('/api/waiter/table/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId }),
+      });
+      if (res.ok) {
+        await fetchTables();
+      }
+    } catch (err) {
+      console.error('Error opening table:', err);
+    }
+  };
+
+  const handleVacateTable = async (tableId: string) => {
+    if (!confirm('Vacate this table and close current session?')) return;
+    try {
+      const res = await fetch('/api/waiter/table/vacate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tableId, resetToken: true }),
+      });
+      if (res.ok) {
+        setSelectedTableId(null);
+        setIsAddingItems(false);
+        setIsSettling(false);
+        await fetchTables();
+      }
+    } catch (err) {
+      console.error('Error vacating table:', err);
+    }
+  };
+
+  // Order Approval & Status Actions
+  const handleUpdateOrderStatus = async (orderId: string, status: 'approved' | 'cancelled' | 'served', reason?: string) => {
     try {
       const res = await fetch('/api/waiter/order/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, status: 'approved' }),
+        body: JSON.stringify({ orderId, status, reason }),
       });
       if (res.ok) {
-        fetchTables();
+        setRejectingOrderId(null);
+        setCustomReason('');
+        await fetchTables();
       }
     } catch (err) {
-      console.error('Error approving order:', err);
+      console.error('Error updating order status:', err);
     }
   };
 
-  // Waiter direct order
-  const handleAddToOrderCart = (item: MenuItem) => {
+  // Add Item to Waiter Direct Cart
+  const handleAddItemToCart = (item: MenuItemData) => {
+    const price = item.price ?? item.price_paise ?? 0;
     setOrderCart(prev => {
-      const exist = prev.find(i => i.item.id === item.id);
+      const exist = prev.find(ci => ci.id === item.id && ci.type === 'item');
       if (exist) {
-        return prev.map(i => (i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+        return prev.map(ci => (ci.id === item.id && ci.type === 'item' ? { ...ci, quantity: ci.quantity + 1 } : ci));
       }
-      return [...prev, { item, quantity: 1 }];
+      return [...prev, { id: item.id, type: 'item', name: item.name, price, quantity: 1 }];
     });
   };
 
-  const handleRemoveFromOrderCart = (itemId: string) => {
+  const handleAddComboToCart = (combo: ComboData) => {
+    const price = combo.price ?? combo.price_paise ?? 0;
     setOrderCart(prev => {
-      const exist = prev.find(i => i.item.id === itemId);
+      const exist = prev.find(ci => ci.id === combo.id && ci.type === 'combo');
+      if (exist) {
+        return prev.map(ci => (ci.id === combo.id && ci.type === 'combo' ? { ...ci, quantity: ci.quantity + 1 } : ci));
+      }
+      return [...prev, { id: combo.id, type: 'combo', name: combo.name, price, quantity: 1 }];
+    });
+  };
+
+  const handleRemoveFromCart = (id: string, type: 'item' | 'combo') => {
+    setOrderCart(prev => {
+      const exist = prev.find(ci => ci.id === id && ci.type === type);
       if (!exist) return prev;
-      if (exist.quantity <= 1) return prev.filter(i => i.item.id !== itemId);
-      return prev.map(i => (i.item.id === itemId ? { ...i, quantity: i.quantity - 1 } : i));
+      if (exist.quantity <= 1) {
+        return prev.filter(ci => !(ci.id === id && ci.type === type));
+      }
+      return prev.map(ci => (ci.id === id && ci.type === type ? { ...ci, quantity: ci.quantity - 1 } : ci));
     });
   };
 
@@ -129,34 +323,37 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     if (!selectedTable || orderCart.length === 0 || submittingOrder) return;
     setSubmittingOrder(true);
     try {
+      const payload = {
+        tableId: selectedTable.id,
+        notes: orderNotes.trim(),
+        items: orderCart.map(ci => ({
+          itemId: ci.type === 'item' ? ci.id : undefined,
+          comboId: ci.type === 'combo' ? ci.id : undefined,
+          quantity: ci.quantity,
+        })),
+      };
+
       const res = await fetch('/api/waiter/order/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId: selectedTable.id,
-          notes: orderNotes.trim(),
-          items: orderCart.map(i => ({
-            itemId: i.item.id,
-            quantity: i.quantity,
-          })),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
         setOrderCart([]);
         setOrderNotes('');
         setIsAddingItems(false);
-        fetchTables();
+        await fetchTables();
       }
     } catch (err) {
-      console.error('Error submitting waiter order:', err);
+      console.error('Error placing waiter order:', err);
     } finally {
       setSubmittingOrder(false);
     }
   };
 
-  // Settle Bill
-  const handleSettleBill = async () => {
+  // Bill Generation & Settlement
+  const handleGenerateAndSettleBill = async () => {
     if (!selectedTable || settlingBill) return;
     setSettlingBill(true);
     try {
@@ -176,35 +373,14 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         setIsSettling(false);
         setDiscountRupees('');
         setActiveBill(data.bill);
-        fetchTables();
+        await fetchTables();
       } else {
-        alert(data.error || 'Failed to settle bill');
+        alert(data.error || 'Failed to generate bill');
       }
     } catch (err) {
-      console.error('Error settling bill:', err);
+      console.error('Error generating bill:', err);
     } finally {
       setSettlingBill(false);
-    }
-  };
-
-  // Vacate Table
-  const handleVacateTable = async () => {
-    if (!selectedTable) return;
-    if (!confirm(`Vacate ${selectedTable.table_number}? This frees the table for the next customer.`)) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/waiter/table/vacate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tableId: selectedTable.id, resetToken: true }),
-      });
-      if (res.ok) {
-        setSelectedTable(null);
-        fetchTables();
-      }
-    } catch (err) {
-      console.error('Error vacating table:', err);
     }
   };
 
@@ -214,24 +390,33 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     router.refresh();
   };
 
+  // Calculate pending orders across all tables
+  const totalWaitingOrders = tables.reduce(
+    (sum, t) => sum + (t.pending_orders_count || t.pendingOrdersCount || 0),
+    0
+  );
+  const waitingTables = tables.filter(t => t.state === 'Order waiting');
+
+  // Filtered tables
   const filteredTables = tables.filter(t => {
-    if (tableFilter === 'occupied') return t.status === 'occupied';
-    if (tableFilter === 'vacant') return t.status === 'vacant';
-    if (tableFilter === 'pending') return t.pendingOrdersCount > 0;
+    if (filter === 'waiting') return t.state === 'Order waiting';
+    if (filter === 'open') return t.state === 'Open';
+    if (filter === 'billed') return t.state === 'Billed';
+    if (filter === 'free') return t.state === 'Free';
     return true;
   });
 
   return (
-    <div className="min-h-screen bg-paper text-ink flex flex-col font-sans">
-      {/* Top POS App Bar */}
+    <div className="min-h-screen bg-paper text-ink flex flex-col font-sans select-none pb-12">
+      {/* Top POS Header */}
       <header className="h-14 bg-ink text-paper px-4 flex items-center justify-between border-b border-black shrink-0">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <span className="font-serif text-lg font-bold tracking-tight">MANASU</span>
-          <span className="text-[11px] uppercase tracking-widest bg-paper/20 px-2 py-0.5 rounded-sm">
-            Floor POS
+          <span className="text-[11px] uppercase tracking-widest bg-paper/20 px-2 py-0.5 rounded-sm font-semibold">
+            WAITER POS
           </span>
-          <span className="text-[11px] text-paper/70 hidden sm:inline">
-            &bull; {currentStaff.name}
+          <span className="text-xs text-paper/70 hidden sm:inline">
+            &middot; {currentStaff.name} ({currentStaff.role})
           </span>
         </div>
 
@@ -239,135 +424,208 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
           {currentStaff.role === 'owner' && (
             <a
               href="/admin"
-              className="h-9 px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-medium transition-colors"
+              className="min-h-[48px] px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-semibold uppercase tracking-wider"
             >
-              Admin &rarr;
+              Admin
             </a>
           )}
           <a
             href="/kitchen"
-            className="h-9 px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-medium transition-colors"
+            className="min-h-[48px] px-3 border border-paper/30 hover:border-paper text-xs rounded-sm flex items-center justify-center font-semibold uppercase tracking-wider"
           >
-            Kitchen Screen &rarr;
+            Kitchen
           </a>
           <button
             type="button"
             onClick={handleLogout}
-            className="h-9 px-2.5 border border-paper/30 hover:bg-paper/10 text-xs rounded-sm transition-colors text-paper/80"
+            className="min-h-[48px] px-3 border border-paper/30 hover:bg-paper/10 text-xs rounded-sm text-paper/80 font-semibold uppercase tracking-wider"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      {/* Filter Tabs */}
-      <div className="px-4 py-2.5 bg-paper-subtle border-b border-rule flex items-center gap-2 overflow-x-auto shrink-0">
+      {/* Visible High-Priority Alert Banner when any customer order is waiting */}
+      {totalWaitingOrders > 0 && (
+        <div
+          role="alert"
+          onClick={() => {
+            if (waitingTables.length > 0) {
+              setSelectedTableId(waitingTables[0].id);
+            }
+          }}
+          className="bg-chilli text-white px-4 py-2.5 flex items-center justify-between cursor-pointer border-b border-black animate-pulse"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider bg-white text-chilli px-2 py-0.5 rounded-sm">
+              ACTION REQUIRED
+            </span>
+            <span className="text-xs font-semibold">
+              {totalWaitingOrders} order{totalWaitingOrders > 1 ? 's' : ''} waiting for approval on{' '}
+              {waitingTables.map(t => t.table_number).join(', ')}
+            </span>
+          </div>
+          <span className="text-xs font-bold uppercase tracking-wider underline">
+            Review &rarr;
+          </span>
+        </div>
+      )}
+
+      {/* State Filter Bar */}
+      <nav aria-label="Table status filters" className="px-4 py-2 bg-paper-subtle border-b border-rule flex items-center gap-2 overflow-x-auto shrink-0">
         <span className="text-xs uppercase tracking-wider text-ink-muted font-bold shrink-0">
           Tables:
         </span>
         <button
           type="button"
-          onClick={() => setTableFilter('all')}
-          className={`h-9 px-3 text-xs font-semibold rounded-sm shrink-0 ${
-            tableFilter === 'all' ? 'bg-ink text-paper' : 'border border-rule bg-white text-ink'
+          onClick={() => setFilter('all')}
+          className={`min-h-[48px] px-3.5 text-xs font-bold rounded-sm uppercase tracking-wider shrink-0 transition-colors ${
+            filter === 'all' ? 'bg-ink text-paper' : 'border border-rule bg-white text-ink'
           }`}
         >
           All ({tables.length})
         </button>
         <button
           type="button"
-          onClick={() => setTableFilter('occupied')}
-          className={`h-9 px-3 text-xs font-semibold rounded-sm shrink-0 ${
-            tableFilter === 'occupied' ? 'bg-ink text-paper' : 'border border-rule bg-white text-ink'
-          }`}
-        >
-          Occupied ({tables.filter(t => t.status === 'occupied').length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTableFilter('pending')}
-          className={`h-9 px-3 text-xs font-semibold rounded-sm shrink-0 flex items-center gap-1.5 ${
-            tableFilter === 'pending'
+          onClick={() => setFilter('waiting')}
+          className={`min-h-[48px] px-3.5 text-xs font-bold rounded-sm uppercase tracking-wider shrink-0 flex items-center gap-1.5 transition-colors ${
+            filter === 'waiting'
               ? 'bg-chilli text-white'
               : 'border border-chilli bg-chilli-light text-chilli'
           }`}
         >
-          <span>Pending Approvals</span>
-          <span className="px-1.5 py-0.2 bg-white text-chilli rounded-sm font-bold text-[10px]">
-            {tables.reduce((sum, t) => sum + t.pendingOrdersCount, 0)}
+          <span>Order waiting</span>
+          <span className="px-1.5 py-0.5 bg-white text-chilli rounded-sm font-extrabold text-[11px]">
+            {totalWaitingOrders}
           </span>
         </button>
         <button
           type="button"
-          onClick={() => setTableFilter('vacant')}
-          className={`h-9 px-3 text-xs font-semibold rounded-sm shrink-0 ${
-            tableFilter === 'vacant' ? 'bg-ink text-paper' : 'border border-rule bg-white text-ink'
+          onClick={() => setFilter('open')}
+          className={`min-h-[48px] px-3.5 text-xs font-bold rounded-sm uppercase tracking-wider shrink-0 transition-colors ${
+            filter === 'open'
+              ? 'bg-emerald-800 text-white'
+              : 'border border-emerald-600/40 bg-white text-emerald-900'
           }`}
         >
-          Vacant ({tables.filter(t => t.status === 'vacant').length})
+          Open ({tables.filter(t => t.state === 'Open').length})
         </button>
-      </div>
+        <button
+          type="button"
+          onClick={() => setFilter('billed')}
+          className={`min-h-[48px] px-3.5 text-xs font-bold rounded-sm uppercase tracking-wider shrink-0 transition-colors ${
+            filter === 'billed'
+              ? 'bg-blue-800 text-white'
+              : 'border border-blue-400 bg-white text-blue-900'
+          }`}
+        >
+          Billed ({tables.filter(t => t.state === 'Billed').length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilter('free')}
+          className={`min-h-[48px] px-3.5 text-xs font-bold rounded-sm uppercase tracking-wider shrink-0 transition-colors ${
+            filter === 'free' ? 'bg-stone-800 text-white' : 'border border-rule bg-white text-stone-700'
+          }`}
+        >
+          Free ({tables.filter(t => t.state === 'Free').length})
+        </button>
+      </nav>
 
-      {/* Main Grid Area */}
-      <main className="p-4 flex-1 overflow-y-auto">
+      {/* Main Grid: Tables */}
+      <main className="p-4 flex-1">
         {loading ? (
-          <p className="text-center py-12 text-sm text-ink-muted">Loading table layout...</p>
+          <div className="py-20 text-center">
+            <p className="font-serif text-base text-ink-muted animate-pulse">Loading restaurant floor tables...</p>
+          </div>
         ) : filteredTables.length === 0 ? (
-          <p className="text-center py-12 text-sm text-ink-muted">No tables match this filter.</p>
+          <div className="py-20 text-center">
+            <p className="text-xs text-ink-muted">No tables match the selected filter.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {filteredTables.map(t => {
-              const isOccupied = t.status === 'occupied';
-              const isBilled = t.status === 'billed';
-              const hasPending = t.pendingOrdersCount > 0;
+            {filteredTables.map(tbl => {
+              const totalPaise = tbl.running_total_paise || tbl.currentTotalPaise || 0;
+              const pendingCount = tbl.pending_orders_count || tbl.pendingOrdersCount || 0;
+
+              // Four discrete states with distinct text AND colour
+              let stateBadge = {
+                text: 'Free',
+                badgeBg: 'bg-stone-200 text-stone-800 border-stone-300',
+                cardBorder: 'border-rule bg-white hover:bg-paper-subtle',
+              };
+
+              if (tbl.state === 'Order waiting') {
+                stateBadge = {
+                  text: 'Order waiting',
+                  badgeBg: 'bg-chilli text-white font-bold',
+                  cardBorder: 'border-chilli ring-2 ring-chilli bg-chilli-light/40',
+                };
+              } else if (tbl.state === 'Open') {
+                stateBadge = {
+                  text: 'Open',
+                  badgeBg: 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold',
+                  cardBorder: 'border-emerald-700/50 bg-white hover:bg-emerald-50/30',
+                };
+              } else if (tbl.state === 'Billed') {
+                stateBadge = {
+                  text: 'Billed',
+                  badgeBg: 'bg-blue-100 text-blue-900 border-blue-400 font-bold',
+                  cardBorder: 'border-blue-400 bg-blue-50/40 hover:bg-blue-50/60',
+                };
+              }
 
               return (
                 <button
-                  key={t.id}
+                  key={tbl.id}
                   type="button"
-                  onClick={() => setSelectedTable(t)}
-                  className={`min-h-[110px] p-3 text-left border rounded-sm flex flex-col justify-between transition-all active:scale-[0.98] ${
-                    hasPending
-                      ? 'border-chilli bg-chilli-light/40 ring-1 ring-chilli'
-                      : isOccupied
-                      ? 'border-amber-400 bg-amber-50/60'
-                      : isBilled
-                      ? 'border-blue-400 bg-blue-50/60'
-                      : 'border-rule bg-white hover:bg-paper-subtle'
-                  }`}
+                  onClick={() => {
+                    setSelectedTableId(tbl.id);
+                    setIsAddingItems(false);
+                    setIsSettling(false);
+                  }}
+                  className={`min-h-[120px] p-3.5 text-left border rounded-sm flex flex-col justify-between transition-all active:scale-[0.98] cursor-pointer ${stateBadge.cardBorder}`}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-1">
                     <div>
-                      <span className="font-serif text-base font-bold text-ink leading-tight block">
-                        {t.table_number}
+                      <span className="font-serif text-lg font-bold text-ink leading-tight block">
+                        {tbl.table_number}
                       </span>
-                      <span className="text-[10px] text-ink-muted uppercase tracking-wider">
-                        {t.seat_capacity} Seats
-                      </span>
+                      {tbl.opened_at && (
+                        <span className="text-[11px] text-ink-muted font-medium">
+                          Opened {formatTimeAgo(tbl.opened_at)}
+                        </span>
+                      )}
                     </div>
 
                     <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${
-                        hasPending
-                          ? 'bg-chilli text-white animate-pulse'
-                          : isOccupied
-                          ? 'bg-amber-800 text-amber-50'
-                          : isBilled
-                          ? 'bg-blue-800 text-blue-50'
-                          : 'bg-green-800 text-green-50'
-                      }`}
+                      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-sm border ${stateBadge.badgeBg}`}
                     >
-                      {hasPending ? 'Action' : t.status}
+                      {stateBadge.text}
                     </span>
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-ink/10 flex items-baseline justify-between">
-                    <span className="text-xs font-bold tabular-nums text-ink">
-                      {formatRupees(t.currentTotalPaise)}
-                    </span>
-                    <span className="text-[11px] text-ink-muted">
-                      {t.activeOrders.length} {t.activeOrders.length === 1 ? 'order' : 'orders'}
-                    </span>
+                  <div className="mt-3 pt-2 border-t border-ink/10 flex items-baseline justify-between">
+                    {tbl.state === 'Free' ? (
+                      <span className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                        Tap to open &rarr;
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-sm font-bold tabular-nums text-ink">
+                          {formatRupees(totalPaise)}
+                        </span>
+                        {pendingCount > 0 ? (
+                          <span className="text-[11px] font-bold text-chilli uppercase">
+                            {pendingCount} waiting
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-ink-muted">
+                            {tbl.orders.length} order{tbl.orders.length === 1 ? '' : 's'}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </button>
               );
@@ -376,10 +634,11 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         )}
       </main>
 
-      {/* Selected Table Drawer */}
+      {/* Selected Table Detail Drawer */}
       {selectedTable && (
         <div className="fixed inset-0 z-40 flex justify-end bg-ink/60">
-          <div className="w-full max-w-md bg-paper border-l border-rule h-full flex flex-col">
+          <div className="w-full max-w-lg bg-paper border-l border-rule h-full flex flex-col shadow-none">
+            {/* Drawer Header */}
             <div className="p-4 border-b border-rule bg-paper-subtle flex items-center justify-between shrink-0">
               <div>
                 <div className="flex items-center gap-2">
@@ -387,333 +646,600 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                     {selectedTable.table_number}
                   </h2>
                   <span
-                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${
-                      selectedTable.status === 'occupied'
-                        ? 'bg-amber-800 text-white'
-                        : selectedTable.status === 'billed'
-                        ? 'bg-blue-800 text-white'
-                        : 'bg-green-800 text-white'
+                    className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded-sm border ${
+                      selectedTable.state === 'Order waiting'
+                        ? 'bg-chilli text-white border-chilli'
+                        : selectedTable.state === 'Open'
+                        ? 'bg-emerald-100 text-emerald-900 border-emerald-400'
+                        : selectedTable.state === 'Billed'
+                        ? 'bg-blue-100 text-blue-900 border-blue-400'
+                        : 'bg-stone-200 text-stone-800 border-stone-300'
                     }`}
                   >
-                    {selectedTable.status}
+                    {selectedTable.state}
                   </span>
                 </div>
-                <p className="text-xs text-ink-muted mt-0.5">
-                  QR Token: <code className="font-mono text-ink">{selectedTable.active_token}</code>
-                </p>
+                {selectedTable.opened_at && (
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    Opened {formatTimeAgo(selectedTable.opened_at)} &middot; Running total:{' '}
+                    <strong className="text-ink font-bold tabular-nums">
+                      {formatRupees(selectedTable.running_total_paise || selectedTable.currentTotalPaise || 0)}
+                    </strong>
+                  </p>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedTable(null);
+                  setSelectedTableId(null);
                   setIsAddingItems(false);
                   setIsSettling(false);
                 }}
-                className="w-9 h-9 flex items-center justify-center border border-rule rounded-sm text-sm text-ink hover:bg-paper"
+                className="w-12 h-12 flex items-center justify-center border border-rule rounded-sm text-base text-ink hover:bg-paper cursor-pointer"
+                aria-label="Close table drawer"
               >
                 &times;
               </button>
             </div>
 
-            <div className="px-4 py-2.5 border-b border-rule bg-paper flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddingItems(!isAddingItems);
-                  setIsSettling(false);
-                }}
-                className="h-10 flex-1 px-3 bg-white border border-ink text-ink text-xs font-bold rounded-sm uppercase tracking-wider hover:bg-paper-subtle"
-              >
-                {isAddingItems ? 'Hide Menu' : '+ Add Items'}
-              </button>
+            {/* Case 1: Table is Free (No session) -> ONE BIG "Open table" button */}
+            {selectedTable.state === 'Free' ? (
+              <div className="p-6 flex-1 flex flex-col justify-center items-center text-center space-y-4">
+                <div className="max-w-xs space-y-2">
+                  <h3 className="font-serif text-lg font-bold text-ink">
+                    Table is vacant
+                  </h3>
+                  <p className="text-xs text-ink-muted">
+                    Open this table to start a dining session. Customers will then be able to scan the QR code to order.
+                  </p>
+                </div>
 
-              {selectedTable.activeOrders.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSettling(!isSettling);
-                    setIsAddingItems(false);
-                  }}
-                  className="h-10 flex-1 px-3 bg-ink text-paper text-xs font-bold rounded-sm uppercase tracking-wider hover:bg-black"
+                  onClick={() => handleOpenTable(selectedTable.id)}
+                  className="w-full max-w-xs min-h-[56px] h-14 bg-ink hover:bg-black text-paper text-sm font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer flex items-center justify-center"
                 >
-                  {isSettling ? 'Back' : 'Bill & Pay'}
+                  Open table
                 </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleVacateTable}
-                className="h-10 px-3 border border-rule hover:border-chilli hover:text-chilli text-xs font-semibold rounded-sm text-ink-muted"
-                title="Vacate and refresh QR for next party"
-              >
-                Vacate
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto flex-1 space-y-4">
-              {/* Waiter Add Items Section */}
-              {isAddingItems && (
-                <div className="p-3 border border-ink/40 bg-white rounded-sm space-y-3">
-                  <span className="block text-xs uppercase tracking-wider font-bold text-ink">
-                    Take Verbal Order at Table
-                  </span>
-
-                  <div className="flex gap-1.5 overflow-x-auto pb-1">
-                    {categories.map(cat => (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => setActiveCategory(cat.id)}
-                        className={`px-2 py-1 text-xs rounded-sm shrink-0 ${
-                          activeCategory === cat.id
-                            ? 'bg-ink text-paper font-medium'
-                            : 'border border-rule bg-paper-subtle text-ink'
-                        }`}
-                      >
-                        {cat.name}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="max-h-48 overflow-y-auto divide-y divide-rule/40 border border-rule/60 p-2 rounded-sm">
-                    {menuItems
-                      .filter(i => !activeCategory || i.category_id === activeCategory)
-                      .map(item => {
-                        const inCart = orderCart.find(ci => ci.item.id === item.id)?.quantity || 0;
-                        return (
-                          <div key={item.id} className="py-1.5 flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-1.5">
-                              <DietaryBadge type={item.dietary} size="sm" />
-                              <span className="font-medium text-ink">{item.name}</span>
-                              <span className="text-ink-muted tabular-nums">
-                                ({formatRupees(item.price_paise)})
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              {inCart > 0 ? (
-                                <div className="flex items-center border border-ink/30 rounded-sm">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveFromOrderCart(item.id)}
-                                    className="w-6 h-6 flex items-center justify-center font-bold"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="w-5 text-center font-bold">{inCart}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddToOrderCart(item)}
-                                    className="w-6 h-6 flex items-center justify-center font-bold"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddToOrderCart(item)}
-                                  className="h-6 px-2 border border-ink/40 text-[11px] font-semibold rounded-sm hover:bg-paper-subtle"
-                                >
-                                  + Add
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-
-                  {orderCart.length > 0 && (
-                    <div className="space-y-2 pt-2 border-t border-rule">
-                      <div className="flex justify-between text-xs font-semibold">
-                        <span>Items to send: {orderCart.reduce((s, c) => s + c.quantity, 0)}</span>
-                        <span>
-                          Total:{' '}
-                          {formatRupees(
-                            orderCart.reduce((s, c) => s + c.item.price_paise * c.quantity, 0)
-                          )}
-                        </span>
-                      </div>
-
-                      <input
-                        type="text"
-                        value={orderNotes}
-                        onChange={e => setOrderNotes(e.target.value)}
-                        placeholder="Order note (e.g. less salt)"
-                        className="w-full text-xs px-2.5 py-1.5 border border-rule rounded-sm"
-                      />
-
-                      <button
-                        type="button"
-                        disabled={submittingOrder}
-                        onClick={handleSubmitWaiterOrder}
-                        className="w-full h-10 bg-chilli text-white text-xs font-bold uppercase rounded-sm hover:bg-chilli-hover"
-                      >
-                        {submittingOrder ? 'Sending to kitchen...' : 'Send Direct to Kitchen'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Settlement View */}
-              {isSettling && (
-                <div className="p-4 border border-ink bg-white rounded-sm space-y-3">
-                  <span className="block text-xs uppercase tracking-wider font-bold text-ink">
-                    Settle Table Bill & Print Receipt
-                  </span>
-
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-ink-muted">Subtotal:</span>
-                      <span className="font-bold tabular-nums">
-                        {formatRupees(selectedTable.currentTotalPaise)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-ink-muted">5% GST (2.5% CGST + 2.5% SGST):</span>
-                      <span className="font-bold tabular-nums">
-                        {formatRupees(Math.round(selectedTable.currentTotalPaise * 0.05))}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-ink-muted">Discount (₹):</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={discountRupees}
-                        onChange={e => setDiscountRupees(e.target.value)}
-                        placeholder="0"
-                        className="w-20 text-right text-xs px-2 py-1 border border-rule rounded-sm font-mono"
-                      />
-                    </div>
-
-                    <div className="border-t border-ink pt-2 flex justify-between text-sm font-bold">
-                      <span>Final Amount:</span>
-                      <span className="tabular-nums">
-                        {formatRupees(
-                          Math.max(
-                            0,
-                            selectedTable.currentTotalPaise +
-                              Math.round(selectedTable.currentTotalPaise * 0.05) -
-                              Math.round((parseFloat(discountRupees) || 0) * 100)
-                          )
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    <span className="block text-[11px] uppercase tracking-wider font-semibold text-ink-muted mb-1.5">
-                      Payment Mode
-                    </span>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['upi', 'cash', 'card'] as const).map(mode => (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => setPaymentMethod(mode)}
-                          className={`h-10 text-xs font-bold uppercase rounded-sm border ${
-                            paymentMethod === mode
-                              ? 'bg-ink text-paper border-ink'
-                              : 'border-rule bg-paper-subtle text-ink'
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              </div>
+            ) : (
+              /* Case 2: Table is Open, Order waiting, or Billed */
+              <>
+                {/* POS Quick Action Toolbar (Min 48px tap targets) */}
+                <div className="px-4 py-2 border-b border-rule bg-paper flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingItems(!isAddingItems);
+                      setIsSettling(false);
+                    }}
+                    className={`min-h-[48px] flex-1 px-3 border text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
+                      isAddingItems
+                        ? 'bg-ink text-paper border-ink'
+                        : 'bg-white text-ink border-rule hover:bg-paper-subtle'
+                    }`}
+                  >
+                    {isAddingItems ? 'Hide Menu' : '+ Add items'}
+                  </button>
 
                   <button
                     type="button"
-                    disabled={settlingBill}
-                    onClick={handleSettleBill}
-                    className="w-full h-11 bg-ink text-paper text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-black mt-2"
+                    onClick={() => {
+                      setIsSettling(!isSettling);
+                      setIsAddingItems(false);
+                    }}
+                    className={`min-h-[48px] flex-1 px-3 border text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer ${
+                      isSettling
+                        ? 'bg-ink text-paper border-ink'
+                        : 'bg-white text-ink border-rule hover:bg-paper-subtle'
+                    }`}
                   >
-                    {settlingBill ? 'Processing...' : 'Collect Payment & Print Receipt'}
+                    {isSettling ? 'Back' : 'Generate bill'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleVacateTable(selectedTable.id)}
+                    className="min-h-[48px] px-3.5 border border-rule hover:border-chilli hover:text-chilli text-xs font-bold uppercase tracking-wider rounded-sm text-ink-muted cursor-pointer"
+                    title="Vacate and close table session"
+                  >
+                    Vacate
                   </button>
                 </div>
-              )}
 
-              {/* Active Orders List on this table */}
-              <div className="space-y-3">
-                <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted">
-                  Active Table Orders ({selectedTable.activeOrders.length})
-                </span>
+                {/* Drawer Body Scroll Area */}
+                <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                  {/* Waiter Add Items Subview (Direct order, skips approval) */}
+                  {isAddingItems && (
+                    <div className="p-3.5 border border-ink bg-white rounded-sm space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-wider font-bold text-ink">
+                          Place Order for Customer (Skips Approval)
+                        </span>
+                        <span className="text-[11px] text-ink-muted">
+                          Sent straight to kitchen
+                        </span>
+                      </div>
 
-                {selectedTable.activeOrders.length === 0 ? (
-                  <p className="text-xs text-ink-muted py-6 text-center border border-dashed border-rule rounded-sm">
-                    No orders placed yet for this table.
-                  </p>
-                ) : (
-                  selectedTable.activeOrders.map(order => {
-                    const isPending = order.status === 'pending';
-                    return (
-                      <div
-                        key={order.id}
-                        className={`p-3 border rounded-sm ${
-                          isPending ? 'border-chilli bg-chilli-light/30' : 'border-rule bg-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-serif font-bold text-sm text-ink">
-                            Order #{order.order_number}
-                          </span>
-                          <span className="text-[11px] text-ink-muted">
-                            {formatTimeAgo(order.created_at)}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between mt-1 text-xs">
-                          <span
-                            className={`font-semibold uppercase tracking-wider text-[10px] ${
-                              isPending ? 'text-chilli' : 'text-ink-muted'
-                            }`}
-                          >
-                            Status: {order.status}
-                          </span>
-                          <span className="font-bold tabular-nums">
-                            {formatRupees(order.total_paise)}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 pt-2 border-t border-ink/10 space-y-1">
-                          {order.items?.map(it => (
-                            <div key={it.id} className="flex justify-between text-xs">
-                              <span>
-                                {it.quantity}x {it.item_name}
-                              </span>
-                              <span className="tabular-nums text-ink-muted">
-                                {formatRupees(it.price_paise * it.quantity)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {order.notes && (
-                          <p className="text-[11px] italic text-ink-muted mt-2">
-                            Note: {order.notes}
-                          </p>
-                        )}
-
-                        {isPending && (
+                      {/* Category Navigation Tabs */}
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+                        <button
+                          type="button"
+                          onClick={() => setActiveCategoryTab('all')}
+                          className={`min-h-[38px] px-2.5 py-1 text-xs rounded-sm shrink-0 font-medium ${
+                            activeCategoryTab === 'all'
+                              ? 'bg-ink text-paper'
+                              : 'border border-rule bg-paper-subtle text-ink'
+                          }`}
+                        >
+                          All Items
+                        </button>
+                        {combos.length > 0 && (
                           <button
                             type="button"
-                            onClick={() => handleApproveOrder(order.id)}
-                            className="w-full mt-3 h-11 bg-chilli text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover"
+                            onClick={() => setActiveCategoryTab('combos')}
+                            className={`min-h-[38px] px-2.5 py-1 text-xs rounded-sm shrink-0 font-medium ${
+                              activeCategoryTab === 'combos'
+                                ? 'bg-ink text-paper'
+                                : 'border border-rule bg-paper-subtle text-ink'
+                            }`}
                           >
-                            Approve Order & Send to Kitchen &rarr;
+                            Combos
                           </button>
                         )}
+                        {categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setActiveCategoryTab(cat.id)}
+                            className={`min-h-[38px] px-2.5 py-1 text-xs rounded-sm shrink-0 font-medium ${
+                              activeCategoryTab === cat.id
+                                ? 'bg-ink text-paper'
+                                : 'border border-rule bg-paper-subtle text-ink'
+                            }`}
+                          >
+                            {cat.name}
+                          </button>
+                        ))}
                       </div>
-                    );
-                  })
-                )}
-              </div>
+
+                      {/* Menu Items Picker (Min 48px tap targets) */}
+                      <div className="max-h-60 overflow-y-auto divide-y divide-rule/40 border border-rule p-2 rounded-sm space-y-1">
+                        {/* Combos */}
+                        {(activeCategoryTab === 'all' || activeCategoryTab === 'combos') &&
+                          combos.map(combo => {
+                            const cartEntry = orderCart.find(ci => ci.id === combo.id && ci.type === 'combo');
+                            const pricePaise = combo.price ?? combo.price_paise ?? 0;
+                            return (
+                              <div key={combo.id} className="min-h-[48px] py-2 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1.5 pr-2">
+                                  <DietaryBadge type={combo.dietary || (combo.is_veg ? 'veg' : 'non_veg')} size="sm" />
+                                  <span className="font-semibold text-ink">{combo.name}</span>
+                                  <span className="text-ink-muted tabular-nums">
+                                    ({formatRupees(pricePaise)})
+                                  </span>
+                                </div>
+
+                                <div className="shrink-0">
+                                  {cartEntry ? (
+                                    <div className="flex items-center border border-ink/40 rounded-sm bg-paper-subtle h-8">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveFromCart(combo.id, 'combo')}
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        aria-label="Decrease quantity"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-6 text-center font-bold tabular-nums">
+                                        {cartEntry.quantity}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddComboToCart(combo)}
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        aria-label="Increase quantity"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddComboToCart(combo)}
+                                      className="min-h-[40px] px-3 border border-ink text-xs font-bold rounded-sm bg-white hover:bg-paper-subtle uppercase"
+                                    >
+                                      + Add
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                        {/* Individual Menu Items */}
+                        {menuItems
+                          .filter(i => activeCategoryTab === 'all' || i.category_id === activeCategoryTab)
+                          .map(item => {
+                            const cartEntry = orderCart.find(ci => ci.id === item.id && ci.type === 'item');
+                            const pricePaise = item.price ?? item.price_paise ?? 0;
+                            return (
+                              <div key={item.id} className="min-h-[48px] py-2 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-1.5 pr-2">
+                                  <DietaryBadge type={item.dietary || (item.is_veg ? 'veg' : 'non_veg')} size="sm" />
+                                  <span className="font-semibold text-ink">{item.name}</span>
+                                  <span className="text-ink-muted tabular-nums">
+                                    ({formatRupees(pricePaise)})
+                                  </span>
+                                </div>
+
+                                <div className="shrink-0">
+                                  {cartEntry ? (
+                                    <div className="flex items-center border border-ink/40 rounded-sm bg-paper-subtle h-8">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveFromCart(item.id, 'item')}
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        aria-label="Decrease quantity"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-6 text-center font-bold tabular-nums">
+                                        {cartEntry.quantity}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddItemToCart(item)}
+                                        className="w-8 h-full flex items-center justify-center font-bold text-sm"
+                                        aria-label="Increase quantity"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddItemToCart(item)}
+                                      className="min-h-[40px] px-3 border border-ink text-xs font-bold rounded-sm bg-white hover:bg-paper-subtle uppercase"
+                                    >
+                                      + Add
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+
+                      {orderCart.length > 0 && (
+                        <div className="space-y-2.5 pt-2 border-t border-rule">
+                          <div className="flex justify-between text-xs font-bold">
+                            <span>
+                              Items: {orderCart.reduce((s, c) => s + c.quantity, 0)}
+                            </span>
+                            <span>
+                              Total:{' '}
+                              {formatRupees(
+                                orderCart.reduce((s, c) => s + c.price * c.quantity, 0)
+                              )}
+                            </span>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={orderNotes}
+                            onChange={e => setOrderNotes(e.target.value)}
+                            placeholder="Optional note for kitchen (e.g. less spicy, urgent)"
+                            className="w-full text-xs px-3 py-2 border border-rule rounded-sm focus:outline-none focus:border-chilli"
+                          />
+
+                          <button
+                            type="button"
+                            disabled={submittingOrder}
+                            onClick={handleSubmitWaiterOrder}
+                            className="w-full min-h-[48px] bg-chilli text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover cursor-pointer"
+                          >
+                            {submittingOrder ? 'Sending to kitchen...' : 'Send Direct to Kitchen &rarr;'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Generate Bill Subview */}
+                  {isSettling && (
+                    <div className="p-4 border border-ink bg-white rounded-sm space-y-3.5">
+                      <span className="block text-xs uppercase tracking-wider font-bold text-ink border-b pb-1">
+                        Generate Table Bill
+                      </span>
+
+                      {/* Calculations breakdown */}
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-ink-muted">Subtotal:</span>
+                          <span className="font-bold tabular-nums">
+                            {formatRupees(selectedTable.running_total_paise || selectedTable.currentTotalPaise || 0)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-ink-muted">5% GST (2.5% CGST + 2.5% SGST):</span>
+                          <span className="font-bold tabular-nums">
+                            {formatRupees(
+                              Math.round((selectedTable.running_total_paise || selectedTable.currentTotalPaise || 0) * 0.05)
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-ink-muted">Discount (₹):</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={discountRupees}
+                            onChange={e => setDiscountRupees(e.target.value)}
+                            placeholder="0"
+                            className="w-24 text-right text-xs px-2 py-1.5 border border-rule rounded-sm font-mono"
+                          />
+                        </div>
+
+                        <div className="border-t border-ink pt-2 flex justify-between text-base font-bold">
+                          <span>Final Total:</span>
+                          <span className="tabular-nums">
+                            {formatRupees(
+                              Math.max(
+                                0,
+                                (selectedTable.running_total_paise || selectedTable.currentTotalPaise || 0) +
+                                  Math.round((selectedTable.running_total_paise || selectedTable.currentTotalPaise || 0) * 0.05) -
+                                  Math.round((parseFloat(discountRupees) || 0) * 100)
+                              )
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payment Method Selector (Min 48px tap targets) */}
+                      <div>
+                        <span className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1.5">
+                          Payment Method
+                        </span>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['upi', 'cash', 'card'] as const).map(mode => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setPaymentMethod(mode)}
+                              className={`min-h-[48px] text-xs font-bold uppercase rounded-sm border cursor-pointer transition-colors ${
+                                paymentMethod === mode
+                                  ? 'bg-ink text-paper border-ink'
+                                  : 'border-rule bg-paper-subtle text-ink hover:bg-paper'
+                              }`}
+                            >
+                              {mode}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={settlingBill}
+                        onClick={handleGenerateAndSettleBill}
+                        className="w-full min-h-[50px] bg-ink hover:bg-black text-paper text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                      >
+                        {settlingBill ? 'Generating Bill...' : 'Generate Bill & Print Receipt'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Active Orders List on this Table */}
+                  <div className="space-y-3">
+                    <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted">
+                      Table Orders ({selectedTable.orders.length})
+                    </span>
+
+                    {selectedTable.orders.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-rule rounded-sm text-xs text-ink-muted">
+                        No orders placed on this table yet.
+                      </div>
+                    ) : (
+                      selectedTable.orders.map(order => {
+                        const isPending = order.status === 'pending';
+                        const isReady = order.status === 'ready';
+                        const isPreparing = order.status === 'preparing';
+                        const orderLines = order.order_lines || order.items || [];
+                        const orderTotal = (order.total_paise || 0) > 0
+                          ? order.total_paise || 0
+                          : orderLines.reduce(
+                              (sum, l) => sum + (l.price_snapshot || l.price_paise || 0) * l.quantity,
+                              0
+                            );
+
+                        return (
+                          <div
+                            key={order.id}
+                            className={`p-3.5 border rounded-sm ${
+                              isPending
+                                ? 'border-chilli bg-chilli-light/40 ring-1 ring-chilli'
+                                : 'border-rule bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-serif font-bold text-sm text-ink">
+                                Order {order.order_number ? `#${order.order_number}` : order.id.slice(-4).toUpperCase()}
+                                <span className="ml-2 text-[10px] uppercase font-normal text-ink-muted">
+                                  ({order.source === 'customer' ? 'Customer' : 'Waiter'})
+                                </span>
+                              </span>
+                              <span className="text-[11px] text-ink-muted">
+                                {formatTimeAgo(order.created_at)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-1 text-xs">
+                              <span
+                                className={`font-bold uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded-sm border ${
+                                  isPending
+                                    ? 'bg-chilli text-white border-chilli animate-pulse'
+                                    : order.status === 'approved'
+                                    ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                    : order.status === 'preparing'
+                                    ? 'bg-orange-100 text-orange-900 border-orange-300'
+                                    : order.status === 'ready'
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold'
+                                    : 'bg-stone-100 text-stone-700 border-stone-300'
+                                }`}
+                              >
+                                {order.status}
+                              </span>
+
+                              <span className="font-bold tabular-nums">
+                                {formatRupees(orderTotal)}
+                              </span>
+                            </div>
+
+                            {/* Order Items */}
+                            <div className="mt-2.5 pt-2 border-t border-ink/10 space-y-1">
+                              {orderLines.map((line, idx) => {
+                                const name = line.name_snapshot || line.item_name || 'Item';
+                                const price = line.price_snapshot || line.price_paise || 0;
+                                const note = line.note || line.notes;
+
+                                return (
+                                  <div key={line.id || idx} className="flex justify-between items-baseline text-xs">
+                                    <span>
+                                      <span className="font-bold">{line.quantity}&times;</span> {name}
+                                      {note ? <span className="text-ink-muted italic ml-1">({note})</span> : null}
+                                    </span>
+                                    <span className="text-ink-muted tabular-nums">
+                                      {formatRupees(price * line.quantity)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {order.notes && (
+                              <p className="text-[11px] italic text-ink-muted mt-2 border-t border-ink/5 pt-1">
+                                Table note: {order.notes}
+                              </p>
+                            )}
+
+                            {/* Action Row for Pending Customer Orders: "Approve" and "Reject" */}
+                            {isPending && (
+                              <div className="mt-3 pt-2.5 border-t border-ink/15 space-y-2">
+                                <p className="text-[11px] font-bold text-chilli uppercase tracking-wider">
+                                  Customer order awaiting approval:
+                                </p>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateOrderStatus(order.id, 'approved')}
+                                    className="min-h-[48px] bg-chilli text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover cursor-pointer"
+                                  >
+                                    Approve &rarr; Kitchen
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setRejectingOrderId(order.id)}
+                                    className="min-h-[48px] border border-chilli text-chilli bg-white hover:bg-chilli-light text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action to Mark Served for Kitchen Orders */}
+                            {(isReady || isPreparing || order.status === 'approved') && (
+                              <div className="mt-3 pt-2 border-t border-ink/10">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'served')}
+                                  className="w-full min-h-[48px] bg-stone-800 hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                                >
+                                  Mark Order Served &#10003;
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Order Quick Reason Modal */}
+      {rejectingOrderId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white border border-rule p-5 rounded-sm w-full max-w-sm space-y-3">
+            <h3 className="font-serif text-base font-bold text-ink">
+              Reject Customer Order
+            </h3>
+            <p className="text-xs text-ink-muted">
+              Select a reason to record on the order cancellation:
+            </p>
+
+            <div className="space-y-1.5">
+              {[
+                'Item out of stock',
+                'Kitchen at capacity / high wait time',
+                'Customer requested cancellation',
+                'Duplicate order',
+                'Other reason',
+              ].map(reason => (
+                <label
+                  key={reason}
+                  className={`flex items-center gap-2 p-2 border rounded-sm text-xs cursor-pointer ${
+                    rejectionReason === reason ? 'border-chilli bg-chilli-light/30' : 'border-rule'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="rejectionReason"
+                    checked={rejectionReason === reason}
+                    onChange={() => setRejectionReason(reason)}
+                    className="accent-chilli"
+                  />
+                  <span>{reason}</span>
+                </label>
+              ))}
+            </div>
+
+            {rejectionReason === 'Other reason' && (
+              <input
+                type="text"
+                value={customReason}
+                onChange={e => setCustomReason(e.target.value)}
+                placeholder="Enter quick reason..."
+                className="w-full text-xs px-2.5 py-1.5 border border-rule rounded-sm focus:outline-none focus:border-chilli"
+              />
+            )}
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRejectingOrderId(null)}
+                className="min-h-[48px] border border-rule text-xs font-semibold rounded-sm text-ink-muted uppercase"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const finalReason = rejectionReason === 'Other reason' ? (customReason || 'Rejected by staff') : rejectionReason;
+                  handleUpdateOrderStatus(rejectingOrderId, 'cancelled', finalReason);
+                }}
+                className="min-h-[48px] bg-chilli text-white text-xs font-bold uppercase rounded-sm hover:bg-chilli-hover"
+              >
+                Confirm Reject
+              </button>
             </div>
           </div>
         </div>

@@ -27,7 +27,7 @@ class RestaurantStore {
   public combos: Combo[] = [...INITIAL_COMBOS];
   public tables: RestaurantTable[] = [...INITIAL_TABLES];
   public staff: StaffProfile[] = [...INITIAL_STAFF];
-  public sessions: Array<{ id: string; table_id: string; status: 'open' | 'billed' | 'closed'; opened_at: string }> = [
+  public sessions: Array<{ id: string; table_id: string; status: 'open' | 'billed' | 'closed'; opened_at: string; closed_at?: string }> = [
     { id: 'sess-01', table_id: 'table-01', status: 'open', opened_at: new Date().toISOString() },
     { id: 'sess-02', table_id: 'table-02', status: 'open', opened_at: new Date().toISOString() },
     { id: 'sess-04', table_id: 'table-04', status: 'open', opened_at: new Date().toISOString() },
@@ -138,12 +138,17 @@ class RestaurantStore {
 
   // Table Helpers
   public getOpenSessionForTable(tableId: string) {
-    return this.sessions.find(s => s.table_id === tableId && s.status === 'open');
+    return this.sessions.find(s => s.table_id === tableId && (s.status === 'open' || s.status === 'billed'));
   }
 
   public openTableSession(tableId: string) {
     const existing = this.getOpenSessionForTable(tableId);
-    if (existing) return existing;
+    if (existing) {
+      if (existing.status === 'billed') {
+        existing.status = 'open';
+      }
+      return existing;
+    }
     const newSession = {
       id: `sess-${Date.now()}`,
       table_id: tableId,
@@ -153,6 +158,16 @@ class RestaurantStore {
     this.sessions.push(newSession);
     this.updateTableStatus(tableId, 'occupied');
     return newSession;
+  }
+
+  public closeTableSession(tableId: string) {
+    const session = this.getOpenSessionForTable(tableId);
+    if (session) {
+      session.status = 'closed';
+      session.closed_at = new Date().toISOString();
+    }
+    this.updateTableStatus(tableId, 'vacant');
+    return session;
   }
 
   public getTableByToken(token: string): RestaurantTable | undefined {
@@ -346,6 +361,12 @@ class RestaurantStore {
     };
 
     this.bills.unshift(newBill);
+
+    // Mark session as billed
+    const session = this.getOpenSessionForTable(params.tableId);
+    if (session) {
+      session.status = 'billed';
+    }
 
     // Mark orders as served/settled
     tableOrders.forEach(o => {
