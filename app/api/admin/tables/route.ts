@@ -28,11 +28,14 @@ export async function GET() {
       .order('label', { ascending: true });
 
     if (error) throw error;
-    return NextResponse.json({ tables: data || [] });
+    if (data && data.length > 0) {
+      return NextResponse.json({ tables: data });
+    }
+    throw new Error('No dining tables in database yet');
   } catch (err: any) {
     const tables = dbStore.tables.map(t => ({
       id: t.id,
-      label: t.table_number,
+      label: t.table_number.replace('Table ', ''),
       qr_token: t.active_token,
       is_enabled: t.is_active,
       created_at: t.created_at,
