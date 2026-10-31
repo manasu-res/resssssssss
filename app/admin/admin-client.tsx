@@ -90,6 +90,10 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
     [catId: string]: { name: string; priceRupees: string; isVeg: boolean };
   }>({});
 
+  // Inline Price Editing State
+  const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>('');
+
   // 2. Combos State
   const [combos, setCombos] = useState<ComboRow[]>([]);
   const [comboName, setComboName] = useState('');
@@ -283,6 +287,40 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
       if (res.ok) fetchMenuData();
     } catch (err) {
       console.error('Error deleting item:', err);
+    }
+  };
+
+  // Inline Price Editing Handlers
+  const handleStartEditPrice = (item: MenuItemRow) => {
+    setEditingPriceItemId(item.id);
+    const rupees = ((item.price || 0) / 100).toString();
+    setEditingPriceValue(rupees);
+  };
+
+  const handleSavePrice = async (itemId: string) => {
+    const rupees = parseFloat(editingPriceValue);
+    if (isNaN(rupees) || rupees < 0) {
+      alert('Please enter a valid price in rupees');
+      return;
+    }
+    const pricePaise = Math.round(rupees * 100);
+
+    // Optimistic UI update
+    setMenuItems(prev => prev.map(i => (i.id === itemId ? { ...i, price: pricePaise } : i)));
+    setEditingPriceItemId(null);
+
+    try {
+      const res = await fetch('/api/admin/menu-items', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: itemId, pricePaise }),
+      });
+      if (!res.ok) {
+        fetchMenuData();
+      }
+    } catch (err) {
+      console.error('Error updating price:', err);
+      fetchMenuData();
     }
   };
 
@@ -806,8 +844,52 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                                 </span>
                               )}
                             </td>
-                            <td className="px-4 py-2.5 text-right font-bold tabular-nums">
-                              {formatRupees(item.price)}
+                            <td className="px-4 py-2 text-right font-bold tabular-nums">
+                              {editingPriceItemId === item.id ? (
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  <span className="text-xs text-ink-muted">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    autoFocus
+                                    value={editingPriceValue}
+                                    onChange={e => setEditingPriceValue(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') handleSavePrice(item.id);
+                                      if (e.key === 'Escape') setEditingPriceItemId(null);
+                                    }}
+                                    className="w-16 px-1.5 py-0.5 text-xs border border-ink rounded-sm bg-white text-right font-bold focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSavePrice(item.id)}
+                                    className="px-2 py-0.5 text-[10px] bg-ink text-paper rounded-sm font-bold uppercase hover:bg-ink/90 cursor-pointer"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingPriceItemId(null)}
+                                    className="px-1 text-xs text-ink-muted hover:text-ink cursor-pointer font-bold"
+                                    title="Cancel"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditPrice(item)}
+                                  className="inline-flex items-center gap-1 hover:text-chilli cursor-pointer group"
+                                  title="Click to edit price"
+                                >
+                                  <span>{formatRupees(item.price)}</span>
+                                  <span className="text-[10px] text-ink-muted font-normal underline group-hover:text-chilli">
+                                    Edit
+                                  </span>
+                                </button>
+                              )}
                             </td>
                             <td className="px-4 py-2.5 text-center">
                               {/* 1-tap "sold out" toggle */}
@@ -823,7 +905,14 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                                 {item.is_available ? 'Available' : 'Sold Out'}
                               </button>
                             </td>
-                            <td className="px-4 py-2.5 text-right">
+                            <td className="px-4 py-2.5 text-right space-x-2">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditPrice(item)}
+                                className="text-[11px] text-ink hover:underline font-semibold"
+                              >
+                                Edit price
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteItem(item.id, item.name)}
