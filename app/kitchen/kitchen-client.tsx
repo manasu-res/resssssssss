@@ -70,7 +70,6 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
-  const [printSlipOrder, setPrintSlipOrder] = useState<KitchenOrder | null>(null);
   const [showReady, setShowReady] = useState(false);
 
   // Track previous order IDs to detect new tickets for soft sound
@@ -170,13 +169,6 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
     } finally {
       setUpdatingId(null);
     }
-  };
-
-  const handlePrintSlip = (order: KitchenOrder) => {
-    setPrintSlipOrder(order);
-    setTimeout(() => {
-      window.print();
-    }, 100);
   };
 
   const handleLogout = async () => {
@@ -434,15 +426,6 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
                         </div>
                       )}
                     </div>
-
-                    {/* "Print kitchen slip" Button */}
-                    <button
-                      type="button"
-                      onClick={() => handlePrintSlip(order)}
-                      className="w-full min-h-[44px] border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer transition-colors flex items-center justify-center"
-                    >
-                      Print kitchen slip
-                    </button>
                   </div>
                 </div>
               );
@@ -450,65 +433,6 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
           </div>
         )}
       </main>
-
-      {/* Hidden Printable Narrow Kitchen Order Ticket (KOT) */}
-      {printSlipOrder && (
-        <div id="kitchen-kot-slip" className="hidden print:block font-mono text-black p-2 bg-white max-w-[76mm] mx-auto text-xs leading-tight">
-          <div className="text-center border-b border-black pb-2 mb-2">
-            <h1 className="text-base font-black tracking-wider">MANASU RESTAURANT</h1>
-            <p className="text-[11px] font-bold uppercase tracking-widest mt-0.5">KITCHEN ORDER TICKET (KOT)</p>
-          </div>
-
-          <div className="flex justify-between items-baseline font-bold text-sm mb-1">
-            <span>{printSlipOrder.table_label.toUpperCase()}</span>
-            <span>KOT #{printSlipOrder.order_number}</span>
-          </div>
-
-          <div className="text-[10px] text-neutral-600 border-b border-dashed border-black pb-1.5 mb-2">
-            <span>Placed: {new Date(printSlipOrder.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
-            <span className="float-right">{new Date().toLocaleDateString('en-IN')}</span>
-          </div>
-
-          <div className="space-y-2 border-b border-black pb-2 mb-2">
-            {printSlipOrder.lines.map((line, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between items-start text-xs font-bold">
-                  <span className="w-6 text-sm">{line.quantity}&times;</span>
-                  <span className="flex-1 text-sm">{line.name}</span>
-                </div>
-
-                {/* Combo items indented */}
-                {line.is_combo && line.combo_items && line.combo_items.length > 0 && (
-                  <div className="pl-6 text-[11px] text-neutral-700 space-y-0.5 mt-0.5">
-                    {line.combo_items.map((ci, cIdx) => (
-                      <div key={cIdx}>
-                        &bull; {ci.quantity * line.quantity}&times; {ci.name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Note */}
-                {line.note && (
-                  <div className="pl-6 text-[10px] font-bold uppercase mt-0.5">
-                    *** {line.note} ***
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {printSlipOrder.notes && (
-            <div className="p-1 border border-black text-[11px] font-bold uppercase mb-2">
-              NOTE: {printSlipOrder.notes}
-            </div>
-          )}
-
-          <div className="text-center text-[10px] pt-1">
-            --- END OF KOT ---
-          </div>
-        </div>
-      )}
     </div>
   );
 }
