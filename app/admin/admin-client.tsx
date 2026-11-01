@@ -542,6 +542,29 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
     }
   };
 
+  const handleDeleteStaff = async (userId: string, name: string) => {
+    if (!confirm(`Are you sure you want to permanently delete staff account "${name}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/staff?userId=${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        fetchStaff();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 403) {
+          alert('Session switched or expired. If you logged in as Waiter/Kitchen in another tab, please Sign out and log back in as Owner.');
+        } else {
+          alert(data.error || 'Failed to delete staff account');
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting staff:', err);
+    }
+  };
+
   // ============================================================================
   // SETTINGS OPERATIONS
   // ============================================================================
@@ -1514,17 +1537,27 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                               {st.is_active ? 'Active' : 'Deactivated'}
                             </span>
                           </td>
-                          <td className="px-4 py-2.5 text-right">
+                          <td className="px-4 py-2.5 text-right space-x-2">
                             {!isSelf && (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleStaffStatus(st.id, st.is_active)}
-                                className={`text-xs font-semibold hover:underline ${
-                                  st.is_active ? 'text-chilli' : 'text-green-800'
-                                }`}
-                              >
-                                {st.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffStatus(st.id, st.is_active)}
+                                  className={`text-xs font-semibold hover:underline cursor-pointer ${
+                                    st.is_active ? 'text-ink-muted hover:text-ink' : 'text-green-800'
+                                  }`}
+                                >
+                                  {st.is_active ? 'Deactivate' : 'Activate'}
+                                </button>
+                                <span className="text-rule/60 select-none">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStaff(st.id, st.name)}
+                                  className="text-xs font-semibold text-chilli hover:underline cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>

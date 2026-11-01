@@ -178,3 +178,55 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const { errorResponse, staff: currentOwner } = await verifyStaffApiRoute(['owner']);
+  if (errorResponse) return errorResponse;
+
+  try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('userId') || searchParams.get('id');
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Prevent owner from deleting their own account
+    if (currentOwner?.userId === userId) {
+      return NextResponse.json(
+        { error: 'You cannot delete your own owner account.' },
+        { status: 400 }
+      );
+    }
+
+    const serviceSupabase = createServiceRoleClient();
+
+    // 1. Delete from profiles table
+    try {
+      await (serviceSupabase as any)
+        .from('profiles')
+        .delete()
+        .eq('id', userId);
+    } catch (profErr) {
+      console.warn('Error deleting profile row:', profErr);
+    }
+
+    // 2. Delete auth user so credentials cannot be used anymore
+    try {
+      await serviceSupabase.auth.admin.deleteUser(userId);
+    } catch (authErr) {
+      console.warn('Error deleting auth user:', authErr);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('Delete staff error:', err);
+    return NextResponse.json(
+      { error: err.message || 'Failed to delete staff member.' },
+      { status: 500 }
+    );
+  }
+}
