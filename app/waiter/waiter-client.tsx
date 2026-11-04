@@ -176,9 +176,21 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const [sessionDetails, setSessionDetails] = useState<{
     id: string;
     accessCode: string;
+    remainingSeconds?: number;
     devices: Array<{ id: string; deviceId: string; deviceName: string; joinedAt: string }>;
   } | null>(null);
   const prevDeviceCountRef = useRef<number>(0);
+
+  // 1-second countdown ticker for table code 5-minute rotation
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSessionDetails(prev => {
+        if (!prev || prev.remainingSeconds === undefined || prev.remainingSeconds <= 0) return prev;
+        return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Void order modal state
   const [voidingOrderId, setVoidingOrderId] = useState<string | null>(null);
@@ -1726,8 +1738,10 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                               <span className="font-mono text-4xl font-black tracking-widest text-ink block">
                                 {sessionDetails?.accessCode || (selectedTable.session as any)?.access_code}
                               </span>
-                              <span className="text-[10px] text-ink-muted">
-                                Customers must enter this 4-digit code to order
+                              <span className="text-[10px] text-ink-muted block mt-0.5 font-medium">
+                                Changes every 5 min{typeof sessionDetails?.remainingSeconds === 'number' && sessionDetails.remainingSeconds > 0
+                                  ? ` (in ${Math.floor(sessionDetails.remainingSeconds / 60)}:${(sessionDetails.remainingSeconds % 60).toString().padStart(2, '0')})`
+                                  : ''}
                               </span>
                             </>
                           ) : (

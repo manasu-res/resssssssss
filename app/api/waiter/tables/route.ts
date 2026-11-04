@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
 import { getServerStaffSession } from '@/lib/auth/session';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getActiveTableCode } from '@/lib/auth/table-codes';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,18 +38,10 @@ export async function GET() {
 
         if (sErr) throw sErr;
 
-        // Ensure every active session has a 4-digit access_code
+        // Populate stable 5-minute rotating access_code for active sessions
         for (const s of activeSessions || []) {
-          if (!s.access_code) {
-            const newCode = Math.floor(1000 + Math.random() * 9000).toString();
-            s.access_code = newCode;
-            (supabase as any)
-              .from('table_sessions')
-              .update({ access_code: newCode, code_attempts: 0 })
-              .eq('id', s.id)
-              .then(() => {})
-              .catch(() => {});
-          }
+          const { code } = getActiveTableCode(s.table_id, s.id);
+          s.access_code = code;
         }
 
         const activeSessionIds = (activeSessions || []).map((s: any) => s.id);

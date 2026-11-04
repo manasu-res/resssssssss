@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import { dbStore } from '@/lib/data/store';
+import { getActiveTableCode, forceRotateTableCode } from '@/lib/auth/table-codes';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,11 +49,14 @@ export async function GET(req: NextRequest) {
           d => d.session_id === memSession.id && d.is_active
         );
 
+        const { code: stableCode, remainingSeconds } = getActiveTableCode(memSession.table_id, memSession.id);
+
         return NextResponse.json({
           session: {
             id: memSession.id,
             tableId: memSession.table_id,
-            accessCode: memSession.access_code || '1234',
+            accessCode: stableCode,
+            remainingSeconds,
             codeAttempts: memSession.code_attempts || 0,
             devices: activeDevices.map(d => ({
               id: d.id,
@@ -64,20 +68,8 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Ensure access code exists
-      let accessCode = session.access_code;
-      if (!accessCode) {
-        accessCode = Math.floor(1000 + Math.random() * 9000).toString();
-        try {
-          await (serviceSupabase as any)
-            .from('table_sessions')
-            .update({ access_code: accessCode, code_attempts: 0 })
-            .eq('id', session.id);
-          session.access_code = accessCode;
-        } catch (updErr) {
-          console.warn('Failed to backfill access_code:', updErr);
-        }
-      }
+      // Stable 5-minute rotating code
+      const { code: accessCode, remainingSeconds } = getActiveTableCode(session.table_id, session.id);
 
       // Fetch active devices from table_session_devices
       const { data: devices } = await (serviceSupabase as any)
@@ -91,7 +83,8 @@ export async function GET(req: NextRequest) {
         session: {
           id: session.id,
           tableId: session.table_id,
-          accessCode: accessCode,
+          accessCode,
+          remainingSeconds,
           codeAttempts: session.code_attempts || 0,
           codeLockedUntil: session.code_locked_until,
           devices: (devices || []).map((d: any) => ({
@@ -116,11 +109,14 @@ export async function GET(req: NextRequest) {
         d => d.session_id === memSession.id && d.is_active
       );
 
+      const { code: stableCode, remainingSeconds } = getActiveTableCode(memSession.table_id, memSession.id);
+
       return NextResponse.json({
         session: {
           id: memSession.id,
           tableId: memSession.table_id,
-          accessCode: memSession.access_code || '1234',
+          accessCode: stableCode,
+          remainingSeconds,
           devices: activeDevices.map(d => ({
             id: d.id,
             deviceId: d.device_id,
@@ -142,45 +138,48 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { action, sessionId, deviceId } = body;
+    const { action, sessionId, tableId, deviceId } = body;
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'sessionId is required' }, { status: 400 });
+    if (!sessionId && !tableId) {
+      return NextResponse.json({ error: 'sessionId or tableId is required' }, { status: 400 });
     }
 
     const serviceSupabase = createServiceRoleClient();
 
     if (action === 'new_code') {
-      const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+      const targetId = sessionId || tableId;
+      const { code: newCode, remainingSeconds } = forceRotateTableCode(tableId || targetId, targetId);
 
       try {
-        // 1. Update session with new access code
-        await (serviceSupabase as any)
-          .from('table_sessions')
-          .update({
-            access_code: newCode,
-            code_attempts: 0,
-            code_locked_until: null,
-          })
-          .eq('id', sessionId);
+        if (sessionId) {
+          await (serviceSupabase as any)
+            .from('table_sessions')
+            .update({
+              access_code: newCode,
+              code_attempts: 0,
+              code_locked_until: null,
+            })
+            .eq('id', sessionId);
 
-        // 2. Invalidate all existing joined devices
-        await (serviceSupabase as any)
-          .from('table_session_devices')
-          .update({
-            is_active: false,
-            removed_at: new Date().toISOString(),
-          })
-          .eq('session_id', sessionId);
+          await (serviceSupabase as any)
+            .from('table_session_devices')
+            .update({
+              is_active: false,
+              removed_at: new Date().toISOString(),
+            })
+            .eq('session_id', sessionId);
+        }
       } catch {
-        // Fallback store
-        dbStore.resetSessionCode(sessionId);
+        if (sessionId) {
+          dbStore.resetSessionCode(sessionId);
+        }
       }
 
       return NextResponse.json({
         success: true,
         accessCode: newCode,
-        message: 'New code generated and all joined devices disconnected.',
+        remainingSeconds,
+        message: 'New code generated for this 5-minute window and devices disconnected.',
       });
     }
 

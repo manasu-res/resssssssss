@@ -5,6 +5,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { dbStore } from '@/lib/data/store';
 import { signTableJoinPayload, COOKIE_NAME } from '@/lib/auth/table-session-cookie';
+import { verifyTableCode } from '@/lib/auth/table-codes';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,8 +91,9 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // Compare 4-digit code strictly on server
-        if (!session.access_code || session.access_code !== code) {
+        // Compare 4-digit code (checks current 5-min window, grace window, and DB code)
+        const isCodeValid = verifyTableCode(code, table.id, session.id, session.access_code);
+        if (!isCodeValid) {
           const nextAttempts = (session.code_attempts || 0) + 1;
           const isLocked = nextAttempts >= 5;
           const lockTime = isLocked ? new Date(Date.now() + 10 * 60 * 1000).toISOString() : null;
@@ -191,7 +193,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!memSession.access_code || memSession.access_code !== code) {
+    const isMemCodeValid = verifyTableCode(code, memTable.id, memSession.id, memSession.access_code);
+    if (!isMemCodeValid) {
       const nextAttempts = (memSession.code_attempts || 0) + 1;
       const isLocked = nextAttempts >= 5;
       memSession.code_attempts = isLocked ? 0 : nextAttempts;
