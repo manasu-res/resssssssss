@@ -54,6 +54,13 @@ export async function GET(req: NextRequest) {
                 .update({ status: 'closed', closed_at: new Date().toISOString() })
                 .eq('id', openSession.id);
               openSession = null;
+            } else if (!openSession.access_code) {
+              const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+              openSession.access_code = newCode;
+              await (supabase as any)
+                .from('table_sessions')
+                .update({ access_code: newCode, code_attempts: 0 })
+                .eq('id', openSession.id);
             }
           }
 

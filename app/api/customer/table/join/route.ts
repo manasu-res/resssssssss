@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 const joinSchema = z.object({
   token: z.string().min(1, 'Table token is required'),
   code: z.string().regex(/^\d{4}$/, 'Code must be 4 digits'),
-  deviceName: z.string().max(50).optional(),
+  customerName: z.string().max(60).optional(),
+  deviceName: z.string().max(60).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -37,9 +38,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { token, code, deviceName } = parse.data;
+    const { token, code, customerName, deviceName } = parse.data;
     const userAgent = req.headers.get('user-agent') || 'Phone';
-    const inferredDeviceName = deviceName || (userAgent.includes('iPhone') ? 'iPhone' : userAgent.includes('Android') ? 'Android' : 'Phone');
+    const rawName = customerName?.trim() || deviceName?.trim();
+    const inferredDeviceName = rawName
+      ? rawName
+      : userAgent.includes('iPhone')
+      ? 'iPhone'
+      : userAgent.includes('Android')
+      ? 'Android'
+      : 'Customer Phone';
 
     const supabase = getServiceSupabase();
 
@@ -142,6 +150,7 @@ export async function POST(req: NextRequest) {
           success: true,
           deviceId,
           sessionId: session.id,
+          customerName: inferredDeviceName,
         });
 
         res.cookies.set(COOKIE_NAME, signedCookie, {
@@ -227,6 +236,7 @@ export async function POST(req: NextRequest) {
       success: true,
       deviceId,
       sessionId: memSession.id,
+      customerName: inferredDeviceName,
     });
 
     res.cookies.set(COOKIE_NAME, signedCookie, {

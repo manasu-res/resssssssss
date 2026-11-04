@@ -37,6 +37,20 @@ export async function GET() {
 
         if (sErr) throw sErr;
 
+        // Ensure every active session has a 4-digit access_code
+        for (const s of activeSessions || []) {
+          if (!s.access_code) {
+            const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+            s.access_code = newCode;
+            (supabase as any)
+              .from('table_sessions')
+              .update({ access_code: newCode, code_attempts: 0 })
+              .eq('id', s.id)
+              .then(() => {})
+              .catch(() => {});
+          }
+        }
+
         const activeSessionIds = (activeSessions || []).map((s: any) => s.id);
 
         // 3. Fetch active orders for these sessions

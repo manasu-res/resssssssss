@@ -38,15 +38,27 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
           if (existingSession) {
+            let accessCode = existingSession.access_code;
+            if (!accessCode) {
+              accessCode = Math.floor(1000 + Math.random() * 9000).toString();
+              await (supabase as any)
+                .from('table_sessions')
+                .update({ access_code: accessCode, code_attempts: 0 })
+                .eq('id', existingSession.id);
+              existingSession.access_code = accessCode;
+            }
             return NextResponse.json({ success: true, session: existingSession });
           }
 
-          // 3. Insert new open session
+          // 3. Insert new open session with random 4-digit access code
+          const newAccessCode = Math.floor(1000 + Math.random() * 9000).toString();
           const { data: newSession, error: sErr } = await (supabase as any)
             .from('table_sessions')
             .insert({
               table_id: tableId,
               status: 'open',
+              access_code: newAccessCode,
+              code_attempts: 0,
               opened_by: session?.userId || null,
               opened_at: new Date().toISOString(),
             })

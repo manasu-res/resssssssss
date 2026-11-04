@@ -57,6 +57,8 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   const [orders, setOrders] = useState<OrderDisplay[]>([]);
 
   // Table code state
+  const [customerName, setCustomerName] = useState('');
+  const [joinedName, setJoinedName] = useState('');
   const [codeDigits, setCodeDigits] = useState(['', '', '', '']);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
@@ -77,6 +79,17 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   // Active category scroll state
   const [activeTab, setActiveTab] = useState<string>('combos');
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Restore saved name
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('manasu_customer_name');
+      if (saved) {
+        setCustomerName(saved);
+        setJoinedName(saved);
+      }
+    } catch {}
+  }, []);
 
   const fetchMenuData = useCallback(async () => {
     try {
@@ -131,9 +144,14 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
   const handleJoinTable = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const trimmedName = customerName.trim();
+    if (!trimmedName) {
+      setCodeError('Please enter your name');
+      return;
+    }
     const fullCode = codeDigits.join('');
     if (fullCode.length !== 4) {
-      setCodeError('Please enter all 4 digits');
+      setCodeError('Please enter all 4 digits of table code');
       return;
     }
 
@@ -144,7 +162,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       const res = await fetch('/api/customer/table/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, code: fullCode }),
+        body: JSON.stringify({ token, code: fullCode, customerName: trimmedName }),
       });
       const data = await res.json();
 
@@ -152,6 +170,10 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         setCodeError(data.error || 'That code is not right.');
       } else {
         setIsJoined(true);
+        setJoinedName(trimmedName);
+        try {
+          localStorage.setItem('manasu_customer_name', trimmedName);
+        } catch {}
         setCodeError(null);
         await fetchMenuData();
       }
@@ -436,21 +458,44 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
             </p>
 
             <form onSubmit={handleJoinTable} className="space-y-4">
-              <div className="flex justify-center gap-2 sm:gap-3">
-                {[0, 1, 2, 3].map(idx => (
-                  <input
-                    key={idx}
-                    ref={digitInputRefs[idx]}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={1}
-                    value={codeDigits[idx]}
-                    onChange={e => handleDigitChange(idx, e.target.value)}
-                    onKeyDown={e => handleDigitKeyDown(idx, e)}
-                    className="w-12 h-14 sm:w-14 sm:h-16 text-center font-mono text-2xl sm:text-3xl font-black bg-white border-2 border-rule rounded-sm focus:border-chilli focus:outline-none transition-colors text-ink"
-                  />
-                ))}
+              <div className="text-left">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink mb-1">
+                  Your Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Ramesh or Priya"
+                  value={customerName}
+                  onChange={e => {
+                    setCustomerName(e.target.value);
+                    setCodeError(null);
+                  }}
+                  className="w-full px-3 py-2 text-sm bg-white border border-rule rounded-sm focus:border-chilli focus:outline-none text-ink font-medium"
+                  maxLength={40}
+                  required
+                />
+              </div>
+
+              <div className="text-left">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink mb-1">
+                  4-Digit Table Code
+                </label>
+                <div className="flex justify-center gap-2 sm:gap-3">
+                  {[0, 1, 2, 3].map(idx => (
+                    <input
+                      key={idx}
+                      ref={digitInputRefs[idx]}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={codeDigits[idx]}
+                      onChange={e => handleDigitChange(idx, e.target.value)}
+                      onKeyDown={e => handleDigitKeyDown(idx, e)}
+                      className="w-12 h-14 sm:w-14 sm:h-16 text-center font-mono text-2xl sm:text-3xl font-black bg-white border-2 border-rule rounded-sm focus:border-chilli focus:outline-none transition-colors text-ink"
+                    />
+                  ))}
+                </div>
               </div>
 
               {codeError && (
@@ -461,7 +506,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
               <button
                 type="submit"
-                disabled={joining || codeDigits.join('').length !== 4}
+                disabled={joining || codeDigits.join('').length !== 4 || !customerName.trim()}
                 className="w-full py-3 bg-chilli hover:bg-chilli-dark text-white font-serif text-sm font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {joining ? 'Connecting...' : 'Start ordering'}

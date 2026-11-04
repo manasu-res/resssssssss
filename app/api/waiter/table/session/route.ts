@@ -64,6 +64,21 @@ export async function GET(req: NextRequest) {
         });
       }
 
+      // Ensure access code exists
+      let accessCode = session.access_code;
+      if (!accessCode) {
+        accessCode = Math.floor(1000 + Math.random() * 9000).toString();
+        try {
+          await (serviceSupabase as any)
+            .from('table_sessions')
+            .update({ access_code: accessCode, code_attempts: 0 })
+            .eq('id', session.id);
+          session.access_code = accessCode;
+        } catch (updErr) {
+          console.warn('Failed to backfill access_code:', updErr);
+        }
+      }
+
       // Fetch active devices from table_session_devices
       const { data: devices } = await (serviceSupabase as any)
         .from('table_session_devices')
@@ -76,7 +91,7 @@ export async function GET(req: NextRequest) {
         session: {
           id: session.id,
           tableId: session.table_id,
-          accessCode: session.access_code,
+          accessCode: accessCode,
           codeAttempts: session.code_attempts || 0,
           codeLockedUntil: session.code_locked_until,
           devices: (devices || []).map((d: any) => ({

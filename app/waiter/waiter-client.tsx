@@ -357,12 +357,23 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       )
     );
     try {
-      await fetch('/api/waiter/table/open', {
+      const res = await fetch('/api/waiter/table/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId }),
       });
+      const data = await res.json();
+      if (data.session) {
+        if (data.session.access_code) {
+          setSessionDetails({
+            id: data.session.id,
+            accessCode: data.session.access_code,
+            devices: [],
+          });
+        }
+      }
       await fetchTables();
+      fetchSessionDetails(tableId, data.session?.id);
     } catch (err) {
       console.error('Error opening table:', err);
     }
@@ -382,12 +393,23 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     setIsBillingPreview(false);
     fetchMenu();
     try {
-      await fetch('/api/waiter/table/open', {
+      const res = await fetch('/api/waiter/table/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId }),
       });
+      const data = await res.json();
+      if (data.session) {
+        if (data.session.access_code) {
+          setSessionDetails({
+            id: data.session.id,
+            accessCode: data.session.access_code,
+            devices: [],
+          });
+        }
+      }
       await fetchTables();
+      fetchSessionDetails(tableId, data.session?.id);
     } catch (err) {
       console.error('Error opening table:', err);
     }
@@ -461,17 +483,24 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     }
   }, [selectedTable, fetchSessionDetails]);
 
-  const handleRegenerateCode = async (sessionId?: string) => {
-    if (!sessionId) return;
+  const handleRegenerateCode = async (sessionId?: string, tableId?: string) => {
+    const sId = sessionId || selectedTable?.session?.id || sessionDetails?.id;
+    if (!sId) {
+      if (tableId || selectedTable?.id) {
+        await handleOpenTable(tableId || selectedTable!.id);
+      }
+      return;
+    }
     try {
       const res = await fetch('/api/waiter/table/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'new_code', sessionId }),
+        body: JSON.stringify({ action: 'new_code', sessionId: sId }),
       });
       const data = await res.json();
       if (res.ok && data.accessCode) {
-        setSessionDetails(prev => prev ? { ...prev, accessCode: data.accessCode, devices: [] } : null);
+        setSessionDetails(prev => prev ? { ...prev, accessCode: data.accessCode, devices: [] } : { id: sId, accessCode: data.accessCode, devices: [] });
+        await fetchTables();
       }
     } catch (err: any) {
       alert(err.message || 'Failed to generate new code');
@@ -532,7 +561,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   };
 
   const handlePrintTableSlip = (table: WaiterTable) => {
-    const code = sessionDetails?.accessCode || '----';
+    const code = sessionDetails?.accessCode || (table.session as any)?.access_code || '----';
     const printWindow = window.open('', '_blank', 'width=380,height=500');
     if (!printWindow) return;
     printWindow.document.write(`
@@ -1692,12 +1721,27 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         </div>
 
                         <div className="text-center py-1">
-                          <span className="font-mono text-4xl font-black tracking-widest text-ink block">
-                            {sessionDetails?.accessCode || '----'}
-                          </span>
-                          <span className="text-[10px] text-ink-muted">
-                            Customers must enter this 4-digit code to order
-                          </span>
+                          {sessionDetails?.accessCode || (selectedTable.session as any)?.access_code ? (
+                            <>
+                              <span className="font-mono text-4xl font-black tracking-widest text-ink block">
+                                {sessionDetails?.accessCode || (selectedTable.session as any)?.access_code}
+                              </span>
+                              <span className="text-[10px] text-ink-muted">
+                                Customers must enter this 4-digit code to order
+                              </span>
+                            </>
+                          ) : (
+                            <div className="py-2 space-y-1">
+                              <span className="text-xs text-ink-muted block">No code generated yet.</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRegenerateCode(selectedTable.session?.id, selectedTable.id)}
+                                className="px-3 py-1.5 bg-chilli text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-chilli-dark"
+                              >
+                                Generate Table Code
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Phones Joined List */}
