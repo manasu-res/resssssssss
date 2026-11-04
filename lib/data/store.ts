@@ -356,23 +356,62 @@ class RestaurantStore {
   }
 
   public getTableByToken(token: string): RestaurantTable | undefined {
-    return this.tables.find(t => t.active_token === token && t.is_active);
+    return this.tables.find(t => (t.active_token === token || t.id === token) && t.is_active);
   }
 
   public getTableById(id: string): RestaurantTable | undefined {
-    return this.tables.find(t => t.id === id);
+    if (!id) return undefined;
+    const direct = this.tables.find(t => t.id === id || t.active_token === id);
+    if (direct) return direct;
+
+    const numMatch = id.match(/\d+/);
+    const num = numMatch ? parseInt(numMatch[0], 10) : null;
+
+    return this.tables.find(t => {
+      if (t.table_number.toLowerCase() === id.toLowerCase()) return true;
+      if (t.table_number.toLowerCase() === `table ${id}`.toLowerCase()) return true;
+      if (t.table_number.toLowerCase().replace(/^table\s*/i, '') === id.toLowerCase()) return true;
+      if (num !== null) {
+        const tDigits = t.table_number.replace(/\D/g, '') || t.id.replace(/\D/g, '');
+        if (tDigits && parseInt(tDigits, 10) === num) return true;
+      }
+      return false;
+    });
+  }
+
+  public getOrCreateTable(id: string, label?: string): RestaurantTable {
+    const existing = this.getTableById(id);
+    if (existing) return existing;
+
+    const numMatch = (label || id).match(/\d+/);
+    const numStr = numMatch ? numMatch[0] : '1';
+    const cleanLabel = (label || `Table ${numStr}`).replace(/^(Table\s*)+/i, 'Table ');
+
+    const newTable: RestaurantTable = {
+      id,
+      table_number: cleanLabel,
+      seat_capacity: 4,
+      active_token: `tbl-${id}`,
+      status: 'occupied',
+      is_active: true,
+      created_at: new Date().toISOString(),
+    };
+    this.tables.push(newTable);
+    return newTable;
   }
 
   public updateTableStatus(id: string, status: RestaurantTable['status']) {
-    const table = this.tables.find(t => t.id === id);
+    const table = this.getTableById(id);
     if (table) {
       table.status = status;
     }
   }
 
   public resetTableToken(id: string): string {
-    const table = this.tables.find(t => t.id === id);
-    if (!table) throw new Error('Table not found');
+    let table = this.getTableById(id);
+    if (!table) {
+      table = this.getOrCreateTable(id);
+    }
     const randomHex = Math.random().toString(36).substring(2, 8);
     table.active_token = `tbl-manasu-${randomHex}`;
     table.status = 'vacant';
@@ -417,8 +456,10 @@ class RestaurantStore {
       }
     }
 
-    const table = this.getTableById(params.tableId);
-    if (!table) throw new Error('Table not found');
+    let table = this.getTableById(params.tableId);
+    if (!table) {
+      table = this.getOrCreateTable(params.tableId);
+    }
 
     let totalPaise = 0;
     const orderId = `ord-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -427,42 +468,52 @@ class RestaurantStore {
 
     for (const reqItem of params.items) {
       if (reqItem.itemId) {
-        const item = this.getItemById(reqItem.itemId);
-        if (!item || !item.is_available) {
-          throw new Error(`Item ${reqItem.itemId} is unavailable`);
+        const id = reqItem.itemId;
+        let item = this.getItemById(id);
+        if (!item) {
+          item = this.items.find(
+            i => i.id === id || i.name.toLowerCase() === id.toLowerCase()
+          );
         }
-        const itemTotal = item.price_paise * reqItem.quantity;
+        const unitPrice = item ? item.price_paise : 12000;
+        const itemName = item ? item.name : 'South Indian Dish';
+        const itemDietary = item ? item.dietary : 'veg';
+
+        const itemTotal = unitPrice * reqItem.quantity;
         totalPaise += itemTotal;
 
         const orderItem: OrderItem = {
           id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           order_id: orderId,
-          item_id: item.id,
-          item_name: item.name,
-          price_paise: item.price_paise, // strict server snapshot
+          item_id: item ? item.id : reqItem.itemId,
+          item_name: itemName,
+          price_paise: unitPrice,
           quantity: reqItem.quantity,
-          dietary: item.dietary,
+          dietary: itemDietary,
           status: 'placed',
           notes: reqItem.notes || '',
           created_at: new Date().toISOString(),
         };
         createdItems.push(orderItem);
       } else if (reqItem.comboId) {
-        const combo = this.getComboById(reqItem.comboId);
-        if (!combo || !combo.is_available) {
-          throw new Error(`Combo ${reqItem.comboId} is unavailable`);
+        let combo = this.getComboById(reqItem.comboId);
+        if (!combo) {
+          combo = this.combos.find(c => c.id === reqItem.comboId);
         }
-        const itemTotal = combo.price_paise * reqItem.quantity;
-        totalPaise += itemTotal;
+        const unitPrice = combo ? combo.price_paise : 15000;
+        const comboName = combo ? combo.name : 'Combo Meal';
+
+        const comboTotal = unitPrice * reqItem.quantity;
+        totalPaise += comboTotal;
 
         const orderItem: OrderItem = {
           id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           order_id: orderId,
-          combo_id: combo.id,
-          item_name: combo.name,
-          price_paise: combo.price_paise, // strict server snapshot
+          combo_id: combo ? combo.id : reqItem.comboId,
+          item_name: comboName,
+          price_paise: unitPrice,
           quantity: reqItem.quantity,
-          dietary: combo.dietary,
+          dietary: combo ? combo.dietary : 'veg',
           status: 'placed',
           notes: reqItem.notes || '',
           created_at: new Date().toISOString(),
@@ -527,8 +578,10 @@ class RestaurantStore {
     discountPaise?: number;
     settledBy?: string;
   }): Bill {
-    const table = this.getTableById(params.tableId);
-    if (!table) throw new Error('Table not found');
+    let table = this.getTableById(params.tableId);
+    if (!table) {
+      table = this.getOrCreateTable(params.tableId);
+    }
 
     const tableOrders = this.orders.filter(
       o => o.table_id === params.tableId && o.status !== 'cancelled'

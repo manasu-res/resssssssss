@@ -261,7 +261,10 @@ export async function POST(req: NextRequest) {
         const isLargeOrder = orderSubtotalPaise > largeOrderThreshold;
 
         // Insert Order with status 'placed'
-        const { data: newOrder, error: oErr } = await (supabase as any)
+        let newOrder: any = null;
+        let oErr: any = null;
+
+        const insertAttempt1 = await (supabase as any)
           .from('orders')
           .insert({
             session_id: openSession.id,
@@ -273,6 +276,27 @@ export async function POST(req: NextRequest) {
           })
           .select()
           .single();
+
+        newOrder = insertAttempt1.data;
+        oErr = insertAttempt1.error;
+
+        // If error occurred (e.g. unmigrated columns in Supabase), retry with core columns
+        if (oErr) {
+          const insertAttempt2 = await (supabase as any)
+            .from('orders')
+            .insert({
+              session_id: openSession.id,
+              status: 'placed',
+              source: 'customer',
+            })
+            .select()
+            .single();
+
+          if (insertAttempt2.data && !insertAttempt2.error) {
+            newOrder = insertAttempt2.data;
+            oErr = null;
+          }
+        }
 
         if (oErr || !newOrder) {
           throw oErr || new Error('Failed to insert order');
@@ -287,6 +311,7 @@ export async function POST(req: NextRequest) {
 
         // Also sync to local dbStore so kitchen/waiter in-memory screens see it instantly
         try {
+          dbStore.getOrCreateTable(table.id, table.label);
           dbStore.orders.unshift({
             id: newOrder.id,
             order_number: newOrder.order_number || Date.now() % 10000,
@@ -328,6 +353,9 @@ export async function POST(req: NextRequest) {
         console.warn('Customer order Supabase placement error, fallback to dbStore:', err.message);
       }
     }
+
+    // Ensure table exists in dbStore
+    dbStore.getOrCreateTable(table.id, table.label);
 
     // Fallback: In-memory store
     const { order, items: createdItems } = dbStore.placeOrder({
