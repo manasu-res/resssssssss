@@ -6,6 +6,7 @@ import { getServiceSupabase } from '@/lib/supabase/service';
 import { dbStore } from '@/lib/data/store';
 import { signTableJoinPayload, COOKIE_NAME } from '@/lib/auth/table-session-cookie';
 import { verifyTableCode } from '@/lib/auth/table-codes';
+import { resolveDiningTable, resolveOpenSession } from '@/lib/data/table-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,54 +51,44 @@ export async function POST(req: NextRequest) {
       ? 'Android'
       : 'Customer Phone';
 
-    const supabase = getServiceSupabase();
+    // 2. Resolve dining table (handles qr_token, table id, label, or number)
+    const table = await resolveDiningTable(token);
+    if (!table || !table.is_enabled) {
+      return NextResponse.json(
+        { error: 'This QR is not valid. Please ask the waiter.' },
+        { status: 404 }
+      );
+    }
 
-    if (supabase) {
-      try {
-        // Find dining table
-        const { data: table, error: tErr } = await (supabase as any)
-          .from('dining_tables')
-          .select('*')
-          .eq('qr_token', token)
-          .maybeSingle();
+    // 3. Resolve active open session
+    const session = await resolveOpenSession(table);
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Ask the waiter to open your table.' },
+        { status: 400 }
+      );
+    }
 
-        if (tErr || !table || !table.is_enabled) {
-          return NextResponse.json(
-            { error: 'This QR is not valid. Please ask the waiter.' },
-            { status: 404 }
-          );
-        }
+    // 4. Check if session is locked
+    if (session.code_locked_until && new Date(session.code_locked_until) > new Date()) {
+      return NextResponse.json(
+        { error: 'Too many tries. Ask your waiter.' },
+        { status: 429 }
+      );
+    }
 
-        // Find open session
-        const { data: session, error: sErr } = await (supabase as any)
-          .from('table_sessions')
-          .select('*')
-          .eq('table_id', table.id)
-          .eq('status', 'open')
-          .maybeSingle();
+    // 5. Compare 4-digit code (checks window, grace window, and explicit record codes)
+    const isCodeValid = verifyTableCode(code, table.id, session.id, session.access_code);
 
-        if (sErr || !session) {
-          return NextResponse.json(
-            { error: 'Ask the waiter to open your table.' },
-            { status: 400 }
-          );
-        }
+    if (!isCodeValid) {
+      const nextAttempts = (session.code_attempts || 0) + 1;
+      const isLocked = nextAttempts >= 5;
+      const lockTime = isLocked ? new Date(Date.now() + 10 * 60 * 1000).toISOString() : null;
 
-        // Check if session is locked
-        if (session.code_locked_until && new Date(session.code_locked_until) > new Date()) {
-          return NextResponse.json(
-            { error: 'Too many tries. Ask your waiter.' },
-            { status: 429 }
-          );
-        }
-
-        // Compare 4-digit code (checks current 5-min window, grace window, and DB code)
-        const isCodeValid = verifyTableCode(code, table.id, session.id, session.access_code);
-        if (!isCodeValid) {
-          const nextAttempts = (session.code_attempts || 0) + 1;
-          const isLocked = nextAttempts >= 5;
-          const lockTime = isLocked ? new Date(Date.now() + 10 * 60 * 1000).toISOString() : null;
-
+      // Update in Supabase if session came from Supabase
+      const supabase = getServiceSupabase();
+      if (supabase && session.source === 'supabase') {
+        try {
           await (supabase as any)
             .from('table_sessions')
             .update({
@@ -105,100 +96,17 @@ export async function POST(req: NextRequest) {
               code_locked_until: lockTime,
             })
             .eq('id', session.id);
-
-          if (isLocked) {
-            return NextResponse.json(
-              { error: 'Too many tries. Ask your waiter.' },
-              { status: 429 }
-            );
-          }
-
-          return NextResponse.json(
-            { error: 'That code is not right.' },
-            { status: 400 }
-          );
+        } catch (e) {
+          console.warn('Failed to update session attempts in Supabase:', e);
         }
-
-        // Code matches! Reset attempts & lock
-        await (supabase as any)
-          .from('table_sessions')
-          .update({
-            code_attempts: 0,
-            code_locked_until: null,
-          })
-          .eq('id', session.id);
-
-        const deviceId = `dev-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-
-        // Insert joined device
-        await (supabase as any)
-          .from('table_session_devices')
-          .insert({
-            session_id: session.id,
-            device_id: deviceId,
-            device_name: inferredDeviceName,
-            is_active: true,
-          });
-
-        const tokenPayload = {
-          tableId: table.id,
-          sessionId: session.id,
-          deviceId,
-          exp: Date.now() + 12 * 60 * 60 * 1000,
-        };
-        const signedCookie = signTableJoinPayload(tokenPayload);
-
-        const res = NextResponse.json({
-          success: true,
-          deviceId,
-          sessionId: session.id,
-          customerName: inferredDeviceName,
-        });
-
-        res.cookies.set(COOKIE_NAME, signedCookie, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          path: '/',
-          maxAge: 12 * 60 * 60,
-        });
-
-        return res;
-      } catch (err: any) {
-        console.warn('Supabase join table error, falling back to dbStore:', err);
       }
-    }
 
-    // Fallback: dbStore in-memory
-    const memTable = dbStore.getTableByToken(token);
-    if (!memTable) {
-      return NextResponse.json(
-        { error: 'This QR is not valid. Please ask the waiter.' },
-        { status: 404 }
-      );
-    }
-
-    let memSession = dbStore.getOpenSessionForTable(memTable.id);
-    if (!memSession) {
-      return NextResponse.json(
-        { error: 'Ask the waiter to open your table.' },
-        { status: 400 }
-      );
-    }
-
-    if (memSession.code_locked_until && new Date(memSession.code_locked_until) > new Date()) {
-      return NextResponse.json(
-        { error: 'Too many tries. Ask your waiter.' },
-        { status: 429 }
-      );
-    }
-
-    const isMemCodeValid = verifyTableCode(code, memTable.id, memSession.id, memSession.access_code);
-    if (!isMemCodeValid) {
-      const nextAttempts = (memSession.code_attempts || 0) + 1;
-      const isLocked = nextAttempts >= 5;
-      memSession.code_attempts = isLocked ? 0 : nextAttempts;
-      memSession.code_locked_until = isLocked ? new Date(Date.now() + 10 * 60 * 1000).toISOString() : null;
+      // Update in dbStore
+      const memSession = dbStore.sessions.find(s => s.id === session.id || s.table_id === table.id);
+      if (memSession) {
+        memSession.code_attempts = isLocked ? 0 : nextAttempts;
+        memSession.code_locked_until = lockTime;
+      }
 
       if (isLocked) {
         return NextResponse.json(
@@ -213,23 +121,60 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Reset attempts on success
-    memSession.code_attempts = 0;
-    memSession.code_locked_until = null;
+    // Code matches! Reset attempts & lock
+    const supabase = getServiceSupabase();
+    if (supabase && session.source === 'supabase') {
+      try {
+        await (supabase as any)
+          .from('table_sessions')
+          .update({
+            code_attempts: 0,
+            code_locked_until: null,
+          })
+          .eq('id', session.id);
+      } catch (e) {
+        console.warn('Failed to reset session attempts in Supabase:', e);
+      }
+    }
+
+    const memSession = dbStore.sessions.find(s => s.id === session.id || s.table_id === table.id);
+    if (memSession) {
+      memSession.code_attempts = 0;
+      memSession.code_locked_until = null;
+    }
 
     const deviceId = `dev-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+    // Record joined device in Supabase
+    if (supabase) {
+      try {
+        await (supabase as any)
+          .from('table_session_devices')
+          .insert({
+            session_id: session.id,
+            device_id: deviceId,
+            device_name: inferredDeviceName,
+            is_active: true,
+          });
+      } catch (e) {
+        console.warn('Failed to insert table_session_devices in Supabase:', e);
+      }
+    }
+
+    // Record joined device in dbStore
     dbStore.devices.push({
       id: `dev-row-${Date.now()}`,
-      session_id: memSession.id,
+      session_id: session.id,
       device_id: deviceId,
       device_name: inferredDeviceName,
       joined_at: new Date().toISOString(),
       is_active: true,
     });
 
+    // Create signed join cookie
     const tokenPayload = {
-      tableId: memTable.id,
-      sessionId: memSession.id,
+      tableId: table.id,
+      sessionId: session.id,
       deviceId,
       exp: Date.now() + 12 * 60 * 60 * 1000,
     };
@@ -238,7 +183,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({
       success: true,
       deviceId,
-      sessionId: memSession.id,
+      sessionId: session.id,
       customerName: inferredDeviceName,
     });
 

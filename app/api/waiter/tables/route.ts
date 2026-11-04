@@ -41,7 +41,15 @@ export async function GET() {
         // Populate stable 5-minute rotating access_code for active sessions
         for (const s of activeSessions || []) {
           const { code } = getActiveTableCode(s.table_id, s.id);
-          s.access_code = code;
+          if (s.access_code !== code) {
+            s.access_code = code;
+            (supabase as any)
+              .from('table_sessions')
+              .update({ access_code: code })
+              .eq('id', s.id)
+              .then(() => {})
+              .catch(() => {});
+          }
         }
 
         const activeSessionIds = (activeSessions || []).map((s: any) => s.id);
@@ -104,10 +112,16 @@ export async function GET() {
             }
           }
 
+          const rawLabel = (tbl.label || '').toString().trim();
+          const cleanNum = rawLabel.replace(/^table\s*/i, '').trim();
+          const displayLabel = rawLabel.toLowerCase().startsWith('table')
+            ? rawLabel
+            : `Table ${rawLabel}`;
+
           return {
             id: tbl.id,
-            label: tbl.label,
-            table_number: `Table ${tbl.label}`,
+            label: cleanNum || displayLabel,
+            table_number: displayLabel,
             qr_token: tbl.qr_token,
             state,
             session: tableSession || null,

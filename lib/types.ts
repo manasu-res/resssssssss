@@ -111,6 +111,11 @@ export interface Order {
   updated_at: string;
   table?: RestaurantTable;
   items?: OrderItem[];
+  needs_confirmation?: boolean;
+  idempotency_key?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  cancelled_by?: string | null;
 }
 
 export interface Bill {

@@ -126,6 +126,7 @@ function playChime() {
 
 export default function WaiterClient({ staff: currentStaff }: WaiterClientProps) {
   const router = useRouter();
+  const formatDisplayTable = (val?: string) => (val ? val.replace(/^(Table\s*)+/i, 'Table ') : '');
   const [tables, setTables] = useState<WaiterTable[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -579,7 +580,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     printWindow.document.write(`
       <html>
         <head>
-          <title>Table Code - ${table.table_number}</title>
+          <title>Table Code - ${formatDisplayTable(table.table_number)}</title>
           <style>
             body { font-family: monospace; padding: 20px; text-align: center; }
             h1 { margin: 0; font-size: 20px; }
@@ -590,7 +591,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         </head>
         <body>
           <h1>MANASU RESTAURANT</h1>
-          <div class="meta">${table.table_number.toUpperCase()}</div>
+          <div class="meta">${formatDisplayTable(table.table_number).toUpperCase()}</div>
           <hr/>
           <div>TABLE ACCESS CODE</div>
           <div class="code">${code}</div>
@@ -916,7 +917,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
             </span>
             <span className="text-xs font-semibold">
               {totalWaitingOrders} order{totalWaitingOrders > 1 ? 's' : ''} waiting for approval on{' '}
-              {waitingTables.map(t => t.table_number).join(', ')}
+              {waitingTables.map(t => formatDisplayTable(t.table_number)).join(', ')}
             </span>
           </div>
           <span className="text-xs font-bold uppercase tracking-wider underline">
@@ -1046,7 +1047,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                   <div className="flex items-start justify-between gap-1">
                     <div>
                       <span className="font-serif text-lg font-bold text-ink leading-tight block">
-                        {tbl.table_number}
+                        {formatDisplayTable(tbl.table_number)}
                       </span>
                       {tbl.opened_at && (
                         <span className="text-[11px] text-ink-muted font-medium">
@@ -1100,7 +1101,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="font-serif text-xl font-bold text-ink">
-                    {selectedTable.table_number}
+                    {formatDisplayTable(selectedTable.table_number)}
                   </h2>
                   <span
                     className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded-sm border ${
@@ -1229,7 +1230,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                           Bill Preview & Payment
                         </span>
                         <span className="text-xs text-ink-muted">
-                          {selectedTable.table_number}
+                          {formatDisplayTable(selectedTable.table_number)}
                         </span>
                       </div>
 
@@ -2014,7 +2015,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                               Bill #{b.bill_no || b.bill_number}
                             </span>
                             <span className="text-xs text-ink-muted">
-                              &middot; {b.table?.table_number || 'Table'}
+                              &middot; {formatDisplayTable(b.table?.table_number) || 'Table'}
                             </span>
                           </div>
                           <span className="text-[11px] text-ink-muted block mt-0.5">

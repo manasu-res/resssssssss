@@ -96,31 +96,34 @@ export function verifyTableCode(
 ): boolean {
   if (!enteredCode || enteredCode.length !== 4) return false;
 
-  // 1. Check database explicit code if present
-  if (dbCode && dbCode === enteredCode) {
+  const normalizedInput = enteredCode.trim();
+
+  // 1. Check explicit code stored in database or session
+  if (dbCode && dbCode.toString().trim() === normalizedInput) {
     return true;
   }
 
-  const key = sessionId || tableId;
   const currentWindow = getCurrentWindow();
-  const offset = manualOffsets.get(key) || 0;
+  const keysToCheck = Array.from(new Set([sessionId, tableId].filter(Boolean) as string[]));
 
-  // 2. Check current 5-minute window
-  const currentCode = computeCodeForWindow(key, currentWindow, offset);
-  if (currentCode === enteredCode) {
-    return true;
-  }
+  for (const key of keysToCheck) {
+    const offset = manualOffsets.get(key) || manualOffsets.get(tableId) || 0;
 
-  // 3. Check previous 5-minute window (grace window)
-  const previousCode = computeCodeForWindow(key, currentWindow - 1, offset);
-  if (previousCode === enteredCode) {
-    return true;
-  }
+    // Current window
+    if (computeCodeForWindow(key, currentWindow, offset) === normalizedInput) return true;
 
-  // 4. Also check without offset in case offset was just bumped
-  if (offset > 0) {
-    const origCurrent = computeCodeForWindow(key, currentWindow, 0);
-    if (origCurrent === enteredCode) return true;
+    // Previous window (grace period for codes that just rotated)
+    if (computeCodeForWindow(key, currentWindow - 1, offset) === normalizedInput) return true;
+
+    // Next window (+1 for slight clock skew between client and server)
+    if (computeCodeForWindow(key, currentWindow + 1, offset) === normalizedInput) return true;
+
+    // Check zero offset if an offset was applied
+    if (offset > 0) {
+      if (computeCodeForWindow(key, currentWindow, 0) === normalizedInput) return true;
+      if (computeCodeForWindow(key, currentWindow - 1, 0) === normalizedInput) return true;
+      if (computeCodeForWindow(key, currentWindow + 1, 0) === normalizedInput) return true;
+    }
   }
 
   return false;

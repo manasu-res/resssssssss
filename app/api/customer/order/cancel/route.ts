@@ -81,6 +81,11 @@ export async function POST(req: NextRequest) {
 
         if (updErr) throw updErr;
 
+        const memOrder = dbStore.orders.find(o => o.id === order.id);
+        if (memOrder) {
+          memOrder.status = 'cancelled';
+        }
+
         return NextResponse.json({ success: true, message: 'Order cancelled successfully' });
       } catch (err: any) {
         console.warn('Supabase customer order cancel error, fallback to dbStore:', err);

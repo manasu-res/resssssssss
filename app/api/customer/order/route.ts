@@ -4,6 +4,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { dbStore } from '@/lib/data/store';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getTableJoinCookie } from '@/lib/auth/table-session-cookie';
+import { resolveDiningTable, resolveOpenSession } from '@/lib/data/table-resolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,66 +90,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 5. Resolve dining table (handles token, table id, label, number)
+    const table = await resolveDiningTable(token);
+    if (!table || !table.is_enabled) {
+      return NextResponse.json(
+        { error: 'This QR is not valid. Please ask the waiter.' },
+        { status: 404 }
+      );
+    }
+
+    // 6. Resolve active open session
+    const openSession = await resolveOpenSession(table);
+    if (!openSession) {
+      return NextResponse.json(
+        { error: 'Ask the waiter to open your table to order.' },
+        { status: 400 }
+      );
+    }
+
+    // 7. Verify join cookie matches this active session or table
+    if (joinCookie.sessionId !== openSession.id && joinCookie.tableId !== table.id) {
+      return NextResponse.json(
+        {
+          error: 'Session expired or new table code generated. Please enter the current table code.',
+          requiresCode: true,
+        },
+        { status: 401 }
+      );
+    }
+
     const supabase = getServiceSupabase();
 
-    if (supabase) {
+    if (supabase && table.source === 'supabase' && openSession.source === 'supabase') {
       try {
-        // 5. Verify table and active status
-        const { data: diningTable } = await (supabase as any)
-          .from('dining_tables')
-          .select('*')
-          .eq('qr_token', token)
-          .maybeSingle();
-
-        if (!diningTable || !diningTable.is_enabled) {
-          return NextResponse.json(
-            { error: 'This QR is not valid. Please ask the waiter.' },
-            { status: 404 }
-          );
-        }
-
-        // 6. Verify table has an open session
-        const { data: openSession, error: sErr } = await (supabase as any)
-          .from('table_sessions')
-          .select('*')
-          .eq('table_id', diningTable.id)
-          .eq('status', 'open')
-          .maybeSingle();
-
-        if (sErr || !openSession) {
-          return NextResponse.json(
-            { error: 'Ask the waiter to open your table to order.' },
-            { status: 400 }
-          );
-        }
-
-        // 7. Check 4-hour auto-close rule
-        const openedAtMs = new Date(openSession.opened_at).getTime();
-        const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-        if (Date.now() - openedAtMs > FOUR_HOURS_MS) {
-          // Auto-close session
-          await (supabase as any)
-            .from('table_sessions')
-            .update({ status: 'closed', closed_at: new Date().toISOString() })
-            .eq('id', openSession.id);
-
-          return NextResponse.json(
-            { error: 'Table session has expired. Ask the waiter to open the table.' },
-            { status: 400 }
-          );
-        }
-
-        // 8. Verify join cookie matches this active session
-        if (joinCookie.sessionId !== openSession.id) {
-          return NextResponse.json(
-            {
-              error: 'Session expired or new table code generated. Please enter the current table code.',
-              requiresCode: true,
-            },
-            { status: 401 }
-          );
-        }
-
         // Check device is not removed in table_session_devices
         const { data: deviceRecord } = await (supabase as any)
           .from('table_session_devices')
@@ -167,7 +141,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // 9. Idempotency Check: prevent duplicate orders on double tap / network retry
+        // Idempotency Check
         if (idempotencyKey) {
           const { data: existingOrder } = await (supabase as any)
             .from('orders')
@@ -198,7 +172,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 10. Rate limit: Max 6 orders per session per 10 minutes
+        // Rate limit: Max 6 orders per session per 10 minutes
         const sessionLimit = rateLimit(`session-orders:${openSession.id}`, 6, 600);
         if (!sessionLimit.success) {
           return NextResponse.json(
@@ -207,7 +181,7 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        // 11. Re-read all prices & availability strictly from database
+        // Re-read all prices & availability strictly from database
         const itemIds = items.map(i => i.itemId).filter(Boolean) as string[];
         const comboIds = items.map(i => i.comboId).filter(Boolean) as string[];
 
@@ -222,73 +196,71 @@ export async function POST(req: NextRequest) {
 
         let dbCombos: any[] = [];
         if (comboIds.length > 0) {
-          const { data: cItems } = await (supabase as any)
+          const { data: mCombos } = await (supabase as any)
             .from('combos')
             .select('id, name, price, price_paise, is_available')
             .in('id', comboIds);
-          dbCombos = cItems || [];
+          dbCombos = mCombos || [];
         }
 
-        let subtotalPaise = 0;
-        const linesToInsert: any[] = [];
+        // Build verified order lines
+        const linesToInsert: Array<{
+          name_snapshot: string;
+          price_snapshot: number;
+          quantity: number;
+          note: string;
+        }> = [];
 
-        for (const line of items) {
-          if (line.itemId) {
-            const dbItem = dbItems.find(i => i.id === line.itemId);
-            if (!dbItem || dbItem.is_available === false) {
-              return NextResponse.json(
-                { error: `"${dbItem?.name || 'Selected item'}" is sold out.` },
-                { status: 400 }
-              );
+        let orderSubtotalPaise = 0;
+
+        for (const item of items) {
+          if (item.itemId) {
+            const found = dbItems.find(i => i.id === item.itemId);
+            if (!found) {
+              return NextResponse.json({ error: 'One or more items are not available on the menu.' }, { status: 400 });
             }
-            const itemPrice = dbItem.price ?? dbItem.price_paise ?? 0;
-            subtotalPaise += itemPrice * line.quantity;
-
-            linesToInsert.push({
-              menu_item_id: dbItem.id,
-              combo_id: null,
-              name_snapshot: dbItem.name,
-              price_snapshot: itemPrice,
-              quantity: line.quantity,
-              note: line.note || '',
-            });
-          } else if (line.comboId) {
-            const dbCombo = dbCombos.find(c => c.id === line.comboId);
-            if (!dbCombo || dbCombo.is_available === false) {
-              return NextResponse.json(
-                { error: `"${dbCombo?.name || 'Selected combo'}" is sold out.` },
-                { status: 400 }
-              );
+            if (found.is_available === false) {
+              return NextResponse.json({ error: `"${found.name}" is currently sold out.` }, { status: 400 });
             }
-            const comboPrice = dbCombo.price ?? dbCombo.price_paise ?? 0;
-            subtotalPaise += comboPrice * line.quantity;
-
+            const unitPrice = found.price_paise ?? found.price ?? 0;
             linesToInsert.push({
-              menu_item_id: null,
-              combo_id: dbCombo.id,
-              name_snapshot: dbCombo.name,
-              price_snapshot: comboPrice,
-              quantity: line.quantity,
-              note: line.note || '',
+              name_snapshot: found.name,
+              price_snapshot: unitPrice,
+              quantity: item.quantity,
+              note: item.note || '',
             });
+            orderSubtotalPaise += unitPrice * item.quantity;
+          } else if (item.comboId) {
+            const found = dbCombos.find(c => c.id === item.comboId);
+            if (!found) {
+              return NextResponse.json({ error: 'Selected combo is not available.' }, { status: 400 });
+            }
+            if (found.is_available === false) {
+              return NextResponse.json({ error: `Combo "${found.name}" is currently sold out.` }, { status: 400 });
+            }
+            const unitPrice = found.price_paise ?? found.price ?? 0;
+            linesToInsert.push({
+              name_snapshot: found.name,
+              price_snapshot: unitPrice,
+              quantity: item.quantity,
+              note: item.note || '',
+            });
+            orderSubtotalPaise += unitPrice * item.quantity;
           }
         }
 
-        if (linesToInsert.length === 0) {
-          return NextResponse.json({ error: 'No valid items in order' }, { status: 400 });
-        }
+        // Check large order threshold (> ₹5000 = 500,000 paise)
+        let largeOrderThreshold = 500000;
+        try {
+          const { data: settings } = await (supabase as any).from('settings').select('*').maybeSingle();
+          if (settings?.large_order_threshold_paise) {
+            largeOrderThreshold = settings.large_order_threshold_paise;
+          }
+        } catch {}
 
-        // 12. Large Order Check (Hold for waiter confirmation if > threshold)
-        const { data: settingsRow } = await (supabase as any)
-          .from('settings')
-          .select('large_order_threshold_paise')
-          .eq('id', 1)
-          .maybeSingle();
+        const isLargeOrder = orderSubtotalPaise > largeOrderThreshold;
 
-        const thresholdPaise = settingsRow?.large_order_threshold_paise ?? 500000;
-        const isLargeOrder = subtotalPaise > thresholdPaise;
-
-        // 13. Insert Order with status 'placed'
+        // Insert Order with status 'placed'
         const { data: newOrder, error: oErr } = await (supabase as any)
           .from('orders')
           .insert({
@@ -306,12 +278,43 @@ export async function POST(req: NextRequest) {
           throw oErr || new Error('Failed to insert order');
         }
 
-        // 14. Insert Order Lines
+        // Insert Order Lines
         const orderLines = linesToInsert.map(l => ({ ...l, order_id: newOrder.id }));
         const { data: insertedLines } = await (supabase as any)
           .from('order_lines')
           .insert(orderLines)
           .select();
+
+        // Also sync to local dbStore so kitchen/waiter in-memory screens see it instantly
+        try {
+          dbStore.orders.unshift({
+            id: newOrder.id,
+            order_number: newOrder.order_number || Date.now() % 10000,
+            table_id: table.id,
+            status: 'placed',
+            source: 'customer',
+            notes: orderNote,
+            total_paise: orderSubtotalPaise,
+            created_at: newOrder.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            needs_confirmation: isLargeOrder,
+          });
+
+          for (const l of linesToInsert) {
+            dbStore.orderItems.push({
+              id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              order_id: newOrder.id,
+              item_id: 'synced-item',
+              item_name: l.name_snapshot,
+              price_paise: l.price_snapshot,
+              quantity: l.quantity,
+              dietary: 'veg',
+              status: 'placed',
+              notes: l.note,
+              created_at: new Date().toISOString(),
+            });
+          }
+        } catch {}
 
         return NextResponse.json({
           success: true,
@@ -327,40 +330,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Fallback: In-memory store
-    const memTable = dbStore.getTableByToken(token);
-    if (!memTable) {
-      return NextResponse.json(
-        { error: 'This QR is not valid. Please ask the waiter.' },
-        { status: 404 }
-      );
-    }
-
-    const openSession = dbStore.getOpenSessionForTable(memTable.id);
-    if (!openSession) {
-      return NextResponse.json(
-        { error: 'Ask the waiter to open your table to order.' },
-        { status: 400 }
-      );
-    }
-
-    // 4-hour check
-    if (Date.now() - new Date(openSession.opened_at).getTime() > 4 * 60 * 60 * 1000) {
-      openSession.status = 'closed';
-      return NextResponse.json(
-        { error: 'Table session has expired. Ask the waiter to open the table.' },
-        { status: 400 }
-      );
-    }
-
-    if (joinCookie.sessionId !== openSession.id) {
-      return NextResponse.json(
-        { error: 'Session expired. Please enter the current table code.', requiresCode: true },
-        { status: 401 }
-      );
-    }
-
     const { order, items: createdItems } = dbStore.placeOrder({
-      tableId: memTable.id,
+      tableId: table.id,
       source: 'customer',
       notes: orderNote,
       idempotencyKey: idempotencyKey || undefined,
