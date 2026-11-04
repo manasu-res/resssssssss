@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'This QR is not valid. Please ask the waiter.' }, { status: 400 });
     }
 
-    const joinCookie = getTableJoinCookie();
+    const joinCookie = getTableJoinCookie(req);
     const supabase = getServiceSupabase();
 
     // 1. Resolve dining table (handles qr_token, table id, label, or number)
@@ -41,27 +41,41 @@ export async function GET(req: NextRequest) {
     const hasOpenSession = Boolean(openSession);
     let isJoined = false;
 
-    if (hasOpenSession && joinCookie && joinCookie.sessionId === openSession!.id) {
-      if (supabase && openSession!.source === 'supabase') {
-        try {
-          const { data: dev } = await (supabase as any)
-            .from('table_session_devices')
-            .select('is_active, removed_at')
-            .eq('session_id', openSession!.id)
-            .eq('device_id', joinCookie.deviceId)
-            .maybeSingle();
+    if (hasOpenSession && joinCookie) {
+      const matchesSession =
+        joinCookie.sessionId === openSession!.id ||
+        joinCookie.tableId === table.id;
 
-          if (dev && dev.is_active && !dev.removed_at) {
-            isJoined = true;
+      if (matchesSession) {
+        let isExplicitlyRemoved = false;
+
+        if (supabase && openSession!.source === 'supabase') {
+          try {
+            const { data: dev } = await (supabase as any)
+              .from('table_session_devices')
+              .select('is_active, removed_at')
+              .eq('session_id', openSession!.id)
+              .eq('device_id', joinCookie.deviceId)
+              .maybeSingle();
+
+            if (dev && (!dev.is_active || dev.removed_at)) {
+              isExplicitlyRemoved = true;
+            }
+          } catch {}
+        }
+
+        if (!isExplicitlyRemoved) {
+          const dev = dbStore.devices.find(
+            d => d.session_id === openSession!.id && d.device_id === joinCookie.deviceId
+          );
+          if (dev && (!dev.is_active || (dev as any).removed_at)) {
+            isExplicitlyRemoved = true;
           }
-        } catch {}
-      }
+        }
 
-      if (!isJoined) {
-        const dev = dbStore.devices.find(
-          d => d.session_id === openSession!.id && d.device_id === joinCookie.deviceId && d.is_active
-        );
-        if (dev) isJoined = true;
+        if (!isExplicitlyRemoved) {
+          isJoined = true;
+        }
       }
     }
 

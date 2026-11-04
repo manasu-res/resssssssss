@@ -139,14 +139,15 @@ export async function resolveOpenSession(table: ResolvedTable): Promise<Resolved
 
   if (supabase && table.source === 'supabase') {
     try {
-      const { data: session } = await (supabase as any)
+      const { data: sessionList, error: sErr } = await (supabase as any)
         .from('table_sessions')
         .select('*')
         .eq('table_id', table.id)
         .in('status', ['open', 'billed'])
         .order('opened_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+
+      const session = !sErr && sessionList && sessionList.length > 0 ? sessionList[0] : null;
 
       if (session) {
         // 4-hour auto-close check

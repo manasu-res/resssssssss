@@ -78,6 +78,7 @@ export function OrderDrawer({
       const res = await fetch('/api/customer/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 

@@ -93,7 +93,9 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
   const fetchMenuData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/customer/menu?token=${encodeURIComponent(token)}`);
+      const res = await fetch(`/api/customer/menu?token=${encodeURIComponent(token)}`, {
+        credentials: 'include',
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -101,8 +103,27 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       }
 
       setTable(data.table);
-      setHasOpenSession(Boolean(data.hasOpenSession));
-      setIsJoined(Boolean(data.isJoined));
+      const open = Boolean(data.hasOpenSession);
+      setHasOpenSession(open);
+
+      if (!open) {
+        setIsJoined(false);
+        try {
+          localStorage.removeItem(`manasu_joined_${token}`);
+        } catch {}
+      } else {
+        const serverJoined = Boolean(data.isJoined);
+        let locallyJoined = false;
+        try {
+          const storedSession = localStorage.getItem(`manasu_joined_${token}`);
+          if (storedSession && (storedSession === data.session?.id || storedSession === 'true')) {
+            locallyJoined = true;
+          }
+        } catch {}
+
+        setIsJoined(serverJoined || locallyJoined);
+      }
+
       setCategories(data.categories || []);
       setItems(data.items || []);
       setCombos(data.combos || []);
@@ -162,6 +183,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       const res = await fetch('/api/customer/table/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ token, code: fullCode, customerName: trimmedName }),
       });
       const data = await res.json();
@@ -173,6 +195,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         setJoinedName(trimmedName);
         try {
           localStorage.setItem('manasu_customer_name', trimmedName);
+          localStorage.setItem(`manasu_joined_${token}`, data.sessionId || 'true');
         } catch {}
         setCodeError(null);
         await fetchMenuData();
@@ -189,6 +212,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       const res = await fetch('/api/customer/order/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ token, orderId }),
       });
       const data = await res.json();

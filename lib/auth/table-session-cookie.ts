@@ -49,12 +49,43 @@ export function verifyTableJoinToken(tokenStr: string): TableJoinTokenPayload | 
   }
 }
 
-export function getTableJoinCookie(): TableJoinTokenPayload | null {
+export function getTableJoinCookie(req?: any): TableJoinTokenPayload | null {
   try {
-    const cookieStore = cookies();
-    const cookie = cookieStore.get(COOKIE_NAME);
-    if (!cookie?.value) return null;
-    return verifyTableJoinToken(cookie.value);
+    let rawCookieVal: string | undefined;
+
+    // 1. Try reading from req.cookies (NextRequest)
+    if (req?.cookies) {
+      if (typeof req.cookies.get === 'function') {
+        rawCookieVal = req.cookies.get(COOKIE_NAME)?.value;
+      } else if (req.cookies[COOKIE_NAME]) {
+        rawCookieVal = req.cookies[COOKIE_NAME];
+      }
+    }
+
+    // 2. Try reading from incoming headers cookie string
+    if (!rawCookieVal && req?.headers) {
+      const cookieHeader =
+        typeof req.headers.get === 'function'
+          ? req.headers.get('cookie')
+          : req.headers.cookie;
+      if (cookieHeader) {
+        const match = cookieHeader.match(new RegExp(`(?:^|; )${COOKIE_NAME}=([^;]*)`));
+        if (match) {
+          rawCookieVal = decodeURIComponent(match[1]);
+        }
+      }
+    }
+
+    // 3. Fallback to next/headers cookies()
+    if (!rawCookieVal) {
+      try {
+        const cookieStore = cookies();
+        rawCookieVal = cookieStore.get(COOKIE_NAME)?.value;
+      } catch {}
+    }
+
+    if (!rawCookieVal) return null;
+    return verifyTableJoinToken(rawCookieVal);
   } catch {
     return null;
   }

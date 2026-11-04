@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Verify table join cookie (Only customers who entered 4-digit code can order)
-    const joinCookie = getTableJoinCookie();
+    const joinCookie = getTableJoinCookie(req);
     if (!joinCookie) {
       return NextResponse.json(
         {
