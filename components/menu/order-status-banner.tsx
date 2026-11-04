@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatTimeAgo } from '@/lib/format';
 
 export interface OrderItemDisplay {
@@ -15,8 +15,9 @@ export interface OrderItemDisplay {
 export interface OrderDisplay {
   id: string;
   order_number?: number;
-  status: 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  status: 'placed' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'pending' | 'approved';
   source?: string;
+  needs_confirmation?: boolean;
   created_at: string;
   order_lines?: OrderItemDisplay[];
   items?: OrderItemDisplay[];
@@ -24,39 +25,69 @@ export interface OrderDisplay {
 
 interface OrderStatusBannerProps {
   orders: OrderDisplay[];
+  onCancelOrder?: (orderId: string) => Promise<void>;
 }
 
-export function OrderStatusBanner({ orders }: OrderStatusBannerProps) {
+export function OrderStatusBanner({ orders, onCancelOrder }: OrderStatusBannerProps) {
+  const [now, setNow] = useState(Date.now());
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   if (!orders || orders.length === 0) return null;
 
   const activeOrders = orders.filter(o => o.status !== 'cancelled');
   if (activeOrders.length === 0) return null;
+
+  const handleCancelClick = async (orderId: string) => {
+    if (!onCancelOrder || cancellingId) return;
+    if (!confirm('Cancel this order? This can only be undone within 60 seconds of ordering.')) {
+      return;
+    }
+    setCancellingId(orderId);
+    try {
+      await onCancelOrder(orderId);
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   return (
     <div className="mb-6 space-y-3">
       {activeOrders.map(order => {
         const orderLines = order.order_lines || order.items || [];
         const orderIdShort = order.order_number ? `#${order.order_number}` : order.id.slice(-4).toUpperCase();
+        const orderAgeSec = Math.floor((now - new Date(order.created_at).getTime()) / 1000);
+        const undoRemainingSec = Math.max(0, 60 - orderAgeSec);
 
-        let headline = 'Sent to the waiter. We\'ll confirm shortly.';
+        const isPlaced = order.status === 'placed' || order.status === 'pending';
+        const isPreparing = order.status === 'preparing' || order.status === 'approved';
+        const isReady = order.status === 'ready';
+        const isServed = order.status === 'served';
+        const needsConfirmation = Boolean(order.needs_confirmation);
+
+        let headline = 'Sent to kitchen';
         let statusBadge = {
-          label: 'Pending waiter approval',
-          bg: 'bg-amber-100',
-          border: 'border-amber-300',
-          text: 'text-amber-900',
+          label: 'Placed & sent to kitchen',
+          bg: 'bg-emerald-50',
+          border: 'border-emerald-300',
+          text: 'text-emerald-900',
         };
-        let subtext: string | null = 'The order does not go to the kitchen until a waiter approves it.';
+        let subtext: string | null = 'The kitchen has received your order.';
 
-        if (order.status === 'approved') {
-          headline = 'Order confirmed by waiter';
+        if (needsConfirmation) {
+          headline = 'Large order — waiter confirming';
           statusBadge = {
-            label: 'Approved & sent to kitchen',
-            bg: 'bg-blue-50',
-            border: 'border-blue-300',
-            text: 'text-blue-900',
+            label: 'Needs confirmation',
+            bg: 'bg-amber-100',
+            border: 'border-amber-300',
+            text: 'text-amber-900',
           };
-          subtext = null;
-        } else if (order.status === 'preparing') {
+          subtext = 'Your order exceeds ₹5,000. A floor waiter will confirm at your table shortly.';
+        } else if (isPreparing) {
           headline = 'Preparing your food';
           statusBadge = {
             label: 'Cooking in kitchen',
@@ -64,8 +95,8 @@ export function OrderStatusBanner({ orders }: OrderStatusBannerProps) {
             border: 'border-orange-300',
             text: 'text-orange-900',
           };
-          subtext = null;
-        } else if (order.status === 'ready') {
+          subtext = 'The chef has started cooking your order.';
+        } else if (isReady) {
           headline = 'Food is ready';
           statusBadge = {
             label: 'Ready to serve',
@@ -73,8 +104,8 @@ export function OrderStatusBanner({ orders }: OrderStatusBannerProps) {
             border: 'border-emerald-400',
             text: 'text-emerald-900',
           };
-          subtext = null;
-        } else if (order.status === 'served') {
+          subtext = 'Your food is ready and will be brought to your table shortly.';
+        } else if (isServed) {
           headline = 'Order served';
           statusBadge = {
             label: 'Served to table',
@@ -85,10 +116,13 @@ export function OrderStatusBanner({ orders }: OrderStatusBannerProps) {
           subtext = null;
         }
 
+        // 60-second undo is available only while kitchen has not tapped Start (status === 'placed')
+        const canUndo = isPlaced && !isPreparing && undoRemainingSec > 0;
+
         return (
           <div
             key={order.id}
-            className={`p-3.5 border rounded-sm ${statusBadge.bg} ${statusBadge.border} text-xs`}
+            className={`p-3.5 border rounded-sm ${statusBadge.bg} ${statusBadge.border} text-xs transition-colors`}
           >
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -100,33 +134,48 @@ export function OrderStatusBanner({ orders }: OrderStatusBannerProps) {
                 </p>
               </div>
 
-              <span className={`px-2 py-0.5 text-[10px] uppercase tracking-wider font-semibold border ${statusBadge.border} ${statusBadge.text} bg-white rounded-sm shrink-0`}>
+              <span
+                className={`font-semibold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-sm border ${statusBadge.border} ${statusBadge.text} bg-white shrink-0`}
+              >
                 {statusBadge.label}
               </span>
             </div>
 
             {subtext && (
-              <p className="mt-1.5 text-[11px] text-ink-muted italic">
+              <p className="text-[11px] text-ink mt-1.5 leading-snug">
                 {subtext}
               </p>
             )}
 
-            {orderLines.length > 0 && (
-              <div className="mt-2.5 pt-2 border-t border-ink/10 space-y-1">
-                {orderLines.map((line, idx) => {
-                  const name = line.name_snapshot || line.item_name || 'Item';
-                  const note = line.note || line.notes || '';
-                  return (
-                    <div key={line.id || idx} className="flex justify-between items-baseline text-[11px] text-ink/90">
-                      <span>
-                        <span className="font-semibold">{line.quantity}&times;</span> {name}
-                        {note ? <span className="text-ink-muted italic ml-1">({note})</span> : null}
-                      </span>
-                    </div>
-                  );
-                })}
+            {/* 60s Undo Button / Notice */}
+            {canUndo && onCancelOrder && (
+              <div className="mt-2.5 pt-2 border-t border-ink/10 flex items-center justify-between">
+                <span className="text-[11px] text-ink-muted font-medium">
+                  Undo available for <span className="font-mono font-bold text-chilli">{undoRemainingSec}s</span>
+                </span>
+                <button
+                  type="button"
+                  disabled={cancellingId === order.id}
+                  onClick={() => handleCancelClick(order.id)}
+                  className="px-2.5 py-1 bg-white border border-chilli text-chilli hover:bg-chilli hover:text-white rounded-sm text-[11px] font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  {cancellingId === order.id ? 'Cancelling...' : 'Cancel order'}
+                </button>
               </div>
             )}
+
+            {/* Itemized snapshot preview */}
+            <div className="mt-2.5 pt-2 border-t border-ink/10 space-y-1">
+              {orderLines.map((line, idx) => (
+                <div key={line.id || idx} className="flex justify-between text-[11px] text-ink-muted">
+                  <span>
+                    <span className="font-bold text-ink">{line.quantity}x</span>{' '}
+                    {line.name_snapshot || line.item_name}
+                    {(line.note || line.notes) ? ` (${line.note || line.notes})` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         );
       })}

@@ -22,7 +22,7 @@ export interface OrderLineItem {
 export interface TableOrder {
   id: string;
   order_number?: number;
-  status: 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
+  status: 'placed' | 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
   source?: 'customer' | 'waiter';
   notes?: string;
   created_at: string;
@@ -171,6 +171,18 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const [isPastBillsOpen, setIsPastBillsOpen] = useState(false);
   const [pastBills, setPastBills] = useState<any[]>([]);
   const [loadingBills, setLoadingBills] = useState(false);
+
+  // Session Details (Access Code & Joined Devices)
+  const [sessionDetails, setSessionDetails] = useState<{
+    id: string;
+    accessCode: string;
+    devices: Array<{ id: string; deviceId: string; deviceName: string; joinedAt: string }>;
+  } | null>(null);
+  const prevDeviceCountRef = useRef<number>(0);
+
+  // Void order modal state
+  const [voidingOrderId, setVoidingOrderId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState('Customer request / cancelled');
 
   // Reject order modal state
   const [rejectingOrderId, setRejectingOrderId] = useState<string | null>(null);
@@ -404,6 +416,7 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       )
     );
     setSelectedTableId(null);
+    setSessionDetails(null);
     setIsAddingItems(false);
     setIsBillingPreview(false);
     try {
@@ -416,6 +429,142 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     } catch (err) {
       console.error('Error vacating table:', err);
     }
+  };
+
+  const fetchSessionDetails = useCallback(async (tableId: string, sessionId?: string) => {
+    try {
+      const res = await fetch(`/api/waiter/table/session?tableId=${encodeURIComponent(tableId)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.session) {
+          if (prevDeviceCountRef.current > 0 && (data.session.devices?.length || 0) > prevDeviceCountRef.current) {
+            playChime(); // chime on new phone joining
+          }
+          prevDeviceCountRef.current = data.session.devices?.length || 0;
+          setSessionDetails(data.session);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching session details:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedTable && selectedTable.state !== 'Free') {
+      fetchSessionDetails(selectedTable.id, selectedTable.session?.id);
+      const timer = setInterval(() => {
+        fetchSessionDetails(selectedTable.id, selectedTable.session?.id);
+      }, 4000);
+      return () => clearInterval(timer);
+    } else {
+      setSessionDetails(null);
+    }
+  }, [selectedTable, fetchSessionDetails]);
+
+  const handleRegenerateCode = async (sessionId?: string) => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch('/api/waiter/table/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'new_code', sessionId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.accessCode) {
+        setSessionDetails(prev => prev ? { ...prev, accessCode: data.accessCode, devices: [] } : null);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to generate new code');
+    }
+  };
+
+  const handleRemoveDevice = async (sessionId: string, deviceId: string) => {
+    try {
+      await fetch('/api/waiter/table/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove_device', sessionId, deviceId }),
+      });
+      setSessionDetails(prev => prev ? {
+        ...prev,
+        devices: prev.devices.filter(d => d.deviceId !== deviceId && d.id !== deviceId),
+      } : null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove device');
+    }
+  };
+
+  const handleVoidOrder = async (orderId: string, reason: string) => {
+    try {
+      const res = await fetch('/api/waiter/order/void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, reason }),
+      });
+      if (res.ok) {
+        setVoidingOrderId(null);
+        await fetchTables();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to void order');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error voiding order');
+    }
+  };
+
+  const handleConfirmLargeOrder = async (orderId: string, action: 'confirm' | 'reject', reason?: string) => {
+    try {
+      const res = await fetch('/api/waiter/order/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, action, reason }),
+      });
+      if (res.ok) {
+        await fetchTables();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to update order confirmation');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error confirming order');
+    }
+  };
+
+  const handlePrintTableSlip = (table: WaiterTable) => {
+    const code = sessionDetails?.accessCode || '----';
+    const printWindow = window.open('', '_blank', 'width=380,height=500');
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Table Code - ${table.table_number}</title>
+          <style>
+            body { font-family: monospace; padding: 20px; text-align: center; }
+            h1 { margin: 0; font-size: 20px; }
+            .code { font-size: 42px; font-weight: bold; margin: 18px 0; letter-spacing: 6px; }
+            .meta { font-size: 12px; margin-bottom: 8px; color: #444; }
+            hr { border: none; border-top: 1px dashed #000; margin: 12px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>MANASU RESTAURANT</h1>
+          <div class="meta">${table.table_number.toUpperCase()}</div>
+          <hr/>
+          <div>TABLE ACCESS CODE</div>
+          <div class="code">${code}</div>
+          <div style="font-size: 12px;">Scan the QR code on your table and enter this code to order.</div>
+          <hr/>
+          <div class="meta">${new Date().toLocaleString()}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   // Order Approval & Status Actions
@@ -1517,8 +1666,71 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
 
                   {/* Active Orders List on this Table */}
                   {!isBillingPreview && (
-                    <div className="space-y-3">
-                      <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted">
+                    <div className="space-y-4">
+                      {/* Table Access Code Card */}
+                      <div className="p-3.5 bg-paper-card border border-rule rounded-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold uppercase tracking-widest text-ink">
+                            Table Access Code
+                          </span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handlePrintTableSlip(selectedTable)}
+                              className="text-xs px-2.5 py-1 bg-white border border-rule hover:bg-paper-subtle text-ink font-semibold rounded cursor-pointer"
+                            >
+                              Print table slip
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRegenerateCode(selectedTable.session?.id || sessionDetails?.id)}
+                              className="text-xs px-2.5 py-1 bg-white border border-rule hover:bg-paper-subtle text-chilli font-semibold rounded cursor-pointer"
+                            >
+                              New code
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="text-center py-1">
+                          <span className="font-mono text-4xl font-black tracking-widest text-ink block">
+                            {sessionDetails?.accessCode || '----'}
+                          </span>
+                          <span className="text-[10px] text-ink-muted">
+                            Customers must enter this 4-digit code to order
+                          </span>
+                        </div>
+
+                        {/* Phones Joined List */}
+                        <div className="border-t border-rule/50 pt-2 space-y-1.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted block">
+                            Phones joined ({sessionDetails?.devices?.length || 0})
+                          </span>
+                          {!sessionDetails?.devices || sessionDetails.devices.length === 0 ? (
+                            <p className="text-[11px] text-ink-muted italic py-1">No customer phones joined yet.</p>
+                          ) : (
+                            sessionDetails.devices.map(dev => (
+                              <div
+                                key={dev.id}
+                                className="flex items-center justify-between text-xs py-1.5 px-2 bg-white border border-rule/60 rounded"
+                              >
+                                <div>
+                                  <span className="font-semibold text-ink">{dev.deviceName}</span>
+                                  <span className="text-[10px] text-ink-muted ml-2">{formatTimeAgo(dev.joinedAt)}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDevice(sessionDetails.id, dev.deviceId || dev.id)}
+                                  className="text-[11px] text-chilli hover:underline font-bold cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted pt-1">
                         Table Orders ({selectedTable.orders.length})
                       </span>
 
@@ -1528,9 +1740,12 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                         </div>
                       ) : (
                         selectedTable.orders.map(order => {
-                          const isPending = order.status === 'pending';
+                          const isNeedsConfirmation = Boolean((order as any).needs_confirmation);
                           const isReady = order.status === 'ready';
                           const isPreparing = order.status === 'preparing';
+                          const isPlaced = order.status === 'placed' || order.status === 'approved';
+                          const isCancelled = order.status === 'cancelled';
+                          const isServed = order.status === 'served';
                           const orderLines = order.order_lines || order.items || [];
                           const orderTotal = (order.total_paise || 0) > 0
                             ? order.total_paise || 0
@@ -1543,17 +1758,25 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                             <div
                               key={order.id}
                               className={`p-3.5 border rounded-sm ${
-                                isPending
-                                  ? 'border-chilli bg-chilli-light/40 ring-1 ring-chilli'
+                                isNeedsConfirmation
+                                  ? 'border-amber-500 bg-amber-50 ring-1 ring-amber-400'
+                                  : isCancelled
+                                  ? 'border-rule bg-paper-subtle/50 opacity-60'
                                   : 'border-rule bg-white'
                               }`}
                             >
                               <div className="flex items-center justify-between">
-                                <span className="font-serif font-bold text-sm text-ink">
-                                  Order {order.order_number ? `#${order.order_number}` : order.id.slice(-4).toUpperCase()}
-                                  <span className="ml-2 text-[10px] uppercase font-normal text-ink-muted">
-                                    ({order.source === 'customer' ? 'Customer' : 'Waiter'})
-                                  </span>
+                                <span className="font-serif font-bold text-sm text-ink flex items-center gap-2">
+                                  <span>Order {order.order_number ? `#${order.order_number}` : order.id.slice(-4).toUpperCase()}</span>
+                                  {order.source === 'customer' ? (
+                                    <span className="bg-chilli text-white text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm">
+                                      Customer
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] uppercase font-normal text-ink-muted">
+                                      (Waiter)
+                                    </span>
+                                  )}
                                 </span>
                                 <span className="text-[11px] text-ink-muted">
                                   {formatTimeAgo(order.created_at)}
@@ -1563,18 +1786,20 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                               <div className="flex items-center justify-between mt-1 text-xs">
                                 <span
                                   className={`font-bold uppercase tracking-wider text-[10px] px-1.5 py-0.5 rounded-sm border ${
-                                    isPending
-                                      ? 'bg-chilli text-white border-chilli animate-pulse'
-                                      : order.status === 'approved'
+                                    isNeedsConfirmation
+                                      ? 'bg-amber-100 text-amber-900 border-amber-400 animate-pulse'
+                                      : order.status === 'placed' || order.status === 'approved'
                                       ? 'bg-blue-100 text-blue-900 border-blue-300'
                                       : order.status === 'preparing'
                                       ? 'bg-orange-100 text-orange-900 border-orange-300'
                                       : order.status === 'ready'
                                       ? 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold'
+                                      : order.status === 'cancelled'
+                                      ? 'bg-red-100 text-red-800 border-red-200'
                                       : 'bg-stone-100 text-stone-700 border-stone-300'
                                   }`}
                                 >
-                                  {order.status}
+                                  {isNeedsConfirmation ? 'Needs Confirmation' : order.status}
                                 </span>
 
                                 <span className="font-bold tabular-nums">
@@ -1609,25 +1834,24 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                                 </p>
                               )}
 
-                              {/* Action Row for Pending Customer Orders */}
-                              {isPending && (
-                                <div className="mt-3 pt-2.5 border-t border-ink/15 space-y-2">
-                                  <p className="text-[11px] font-bold text-chilli uppercase tracking-wider">
-                                    Customer order awaiting approval:
+                              {/* Large Order Confirmation Held */}
+                              {isNeedsConfirmation && (
+                                <div className="mt-3 pt-2.5 border-t border-amber-300 space-y-2">
+                                  <p className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">
+                                    Large order held for confirmation (&gt; ₹5,000):
                                   </p>
                                   <div className="grid grid-cols-2 gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => handleUpdateOrderStatus(order.id, 'approved')}
-                                      className="min-h-[48px] bg-chilli text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover cursor-pointer"
+                                      onClick={() => handleConfirmLargeOrder(order.id, 'confirm')}
+                                      className="min-h-[44px] bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-emerald-700 cursor-pointer"
                                     >
-                                      Approve &rarr; Kitchen
+                                      Confirm &rarr; Kitchen
                                     </button>
-
                                     <button
                                       type="button"
-                                      onClick={() => setRejectingOrderId(order.id)}
-                                      className="min-h-[48px] border border-chilli text-chilli bg-white hover:bg-chilli-light text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                                      onClick={() => handleConfirmLargeOrder(order.id, 'reject')}
+                                      className="min-h-[44px] border border-chilli text-chilli bg-white hover:bg-chilli-light text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
                                     >
                                       Reject
                                     </button>
@@ -1635,16 +1859,27 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                                 </div>
                               )}
 
-                              {/* Action to Mark Served */}
-                              {(isReady || isPreparing || order.status === 'approved') && (
-                                <div className="mt-3 pt-2 border-t border-ink/10">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateOrderStatus(order.id, 'served')}
-                                    className="w-full min-h-[48px] bg-stone-800 hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
-                                  >
-                                    Mark served
-                                  </button>
+                              {/* Action Buttons for Waiter: Mark served & Void */}
+                              {!isCancelled && !isNeedsConfirmation && (
+                                <div className="mt-3 pt-2 border-t border-ink/10 flex items-center gap-2">
+                                  {!isServed && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateOrderStatus(order.id, 'served')}
+                                      className="flex-1 min-h-[44px] bg-stone-800 hover:bg-black text-white text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                                    >
+                                      Mark served
+                                    </button>
+                                  )}
+                                  {!isServed && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setVoidingOrderId(order.id)}
+                                      className="px-3 min-h-[44px] border border-chilli/60 text-chilli hover:bg-chilli-light text-xs font-bold uppercase tracking-wider rounded-sm cursor-pointer"
+                                    >
+                                      Void
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1819,6 +2054,62 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                 className="min-h-[44px] bg-chilli text-white text-xs font-bold uppercase rounded-sm hover:bg-chilli-hover cursor-pointer"
               >
                 Confirm Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Void Order Modal */}
+      {voidingOrderId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 print:hidden">
+          <div className="bg-white border border-rule p-5 rounded-sm w-full max-w-sm space-y-3">
+            <h3 className="font-serif text-base font-bold text-ink">
+              Void Order
+            </h3>
+            <p className="text-xs text-ink-muted">
+              Select a reason for voiding this unserved order:
+            </p>
+
+            <div className="space-y-1.5">
+              {[
+                'Customer changed mind / left',
+                'Ordered by mistake / duplicate',
+                'Kitchen cannot prepare',
+                'Wrong table assigned',
+              ].map(reason => (
+                <label
+                  key={reason}
+                  className={`flex items-center gap-2 p-2 border rounded-sm text-xs cursor-pointer ${
+                    voidReason === reason ? 'border-chilli bg-chilli-light/30' : 'border-rule'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="voidReason"
+                    checked={voidReason === reason}
+                    onChange={() => setVoidReason(reason)}
+                    className="accent-chilli"
+                  />
+                  <span>{reason}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setVoidingOrderId(null)}
+                className="min-h-[48px] border border-rule text-xs font-semibold rounded-sm text-ink-muted uppercase cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVoidOrder(voidingOrderId, voidReason)}
+                className="min-h-[48px] bg-chilli text-white text-xs font-bold uppercase rounded-sm hover:bg-chilli-hover cursor-pointer"
+              >
+                Confirm Void
               </button>
             </div>
           </div>

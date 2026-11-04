@@ -1,9 +1,36 @@
 export type DietaryType = 'veg' | 'non_veg';
 export type TableStatus = 'vacant' | 'occupied' | 'billed';
-export type OrderStatus = 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
+export type OrderStatus = 'placed' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'pending' | 'approved';
 export type OrderSource = 'customer' | 'waiter';
 export type PaymentMethod = 'cash' | 'upi' | 'card';
 export type StaffRole = 'owner' | 'waiter' | 'kitchen';
+
+export interface RestaurantSettings {
+  id: number;
+  restaurant_name: string;
+  address: string;
+  phone: string;
+  tagline?: string;
+  about_text?: string;
+  opening_hours?: string;
+  maps_url?: string;
+  photos?: string[];
+  large_order_threshold_paise?: number;
+  gstin?: string | null;
+  tax_percent: number;
+  bill_footer: string;
+  paper_width?: '80mm' | '58mm';
+}
+
+export interface TableSessionDevice {
+  id: string;
+  session_id: string;
+  device_id: string;
+  device_name?: string;
+  joined_at: string;
+  removed_at?: string | null;
+  is_active: boolean;
+}
 
 export interface StaffProfile {
   id: string;

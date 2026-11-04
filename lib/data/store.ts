@@ -27,14 +27,48 @@ class RestaurantStore {
   public combos: Combo[] = [...INITIAL_COMBOS];
   public tables: RestaurantTable[] = [...INITIAL_TABLES];
   public staff: StaffProfile[] = [...INITIAL_STAFF];
-  public sessions: Array<{ id: string; table_id: string; status: 'open' | 'billed' | 'closed'; opened_at: string; closed_at?: string }> = [
-    { id: 'sess-01', table_id: 'table-01', status: 'open', opened_at: new Date().toISOString() },
-    { id: 'sess-02', table_id: 'table-02', status: 'open', opened_at: new Date().toISOString() },
-    { id: 'sess-03', table_id: 'table-03', status: 'open', opened_at: new Date().toISOString() },
-    { id: 'sess-04', table_id: 'table-04', status: 'open', opened_at: new Date().toISOString() },
-    { id: 'sess-05', table_id: 'table-05', status: 'open', opened_at: new Date().toISOString() },
-    { id: 'sess-06', table_id: 'table-06', status: 'open', opened_at: new Date().toISOString() },
+  public sessions: Array<{
+    id: string;
+    table_id: string;
+    status: 'open' | 'billed' | 'closed';
+    access_code?: string;
+    code_attempts?: number;
+    code_locked_until?: string | null;
+    opened_at: string;
+    closed_at?: string;
+  }> = [
+    { id: 'sess-01', table_id: 'table-01', status: 'open', access_code: '4819', code_attempts: 0, opened_at: new Date().toISOString() },
+    { id: 'sess-02', table_id: 'table-02', status: 'open', access_code: '5923', code_attempts: 0, opened_at: new Date().toISOString() },
+    { id: 'sess-03', table_id: 'table-03', status: 'open', access_code: '3184', code_attempts: 0, opened_at: new Date().toISOString() },
+    { id: 'sess-04', table_id: 'table-04', status: 'open', access_code: '7461', code_attempts: 0, opened_at: new Date().toISOString() },
+    { id: 'sess-05', table_id: 'table-05', status: 'open', access_code: '2895', code_attempts: 0, opened_at: new Date().toISOString() },
+    { id: 'sess-06', table_id: 'table-06', status: 'open', access_code: '9032', code_attempts: 0, opened_at: new Date().toISOString() },
   ];
+  public devices: Array<{
+    id: string;
+    session_id: string;
+    device_id: string;
+    device_name?: string;
+    joined_at: string;
+    removed_at?: string | null;
+    is_active: boolean;
+  }> = [];
+  public settings = {
+    id: 1,
+    restaurant_name: 'Manasu Restaurant',
+    tagline: 'Pure Vegetarian South Indian Cuisine',
+    about_text: 'Authentic South Indian flavours served with devotion and tradition in Bengaluru.',
+    opening_hours: 'Monday - Sunday: 7:00 AM - 11:00 PM',
+    maps_url: '',
+    address: 'Bengaluru, Karnataka',
+    phone: '',
+    photos: [] as string[],
+    large_order_threshold_paise: 500000,
+    gstin: '',
+    tax_percent: 0,
+    bill_footer: 'Thank you for dining at Manasu! Visit again.',
+    paper_width: '80mm' as '80mm' | '58mm',
+  };
   public orders: Order[] = [];
   public orderItems: OrderItem[] = [];
   public bills: Bill[] = [];
@@ -268,17 +302,47 @@ class RestaurantStore {
       if (existing.status === 'billed') {
         existing.status = 'open';
       }
+      if (!existing.access_code) {
+        existing.access_code = Math.floor(1000 + Math.random() * 9000).toString();
+      }
       return existing;
     }
+    const access_code = Math.floor(1000 + Math.random() * 9000).toString();
     const newSession = {
       id: `sess-${Date.now()}`,
       table_id: tableId,
       status: 'open' as const,
+      access_code,
+      code_attempts: 0,
+      code_locked_until: null,
       opened_at: new Date().toISOString(),
     };
     this.sessions.push(newSession);
     this.updateTableStatus(tableId, 'occupied');
     return newSession;
+  }
+
+  public resetSessionCode(tableId: string): string {
+    const session = this.getOpenSessionForTable(tableId);
+    if (!session) throw new Error('No open session found for table');
+    const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+    session.access_code = newCode;
+    session.code_attempts = 0;
+    session.code_locked_until = null;
+
+    // Deactivate all joined devices for this session
+    this.devices = this.devices.map(d =>
+      d.session_id === session.id ? { ...d, is_active: false, removed_at: new Date().toISOString() } : d
+    );
+    return newCode;
+  }
+
+  public removeJoinedDevice(sessionId: string, deviceId: string) {
+    this.devices = this.devices.map(d =>
+      d.session_id === sessionId && d.device_id === deviceId
+        ? { ...d, is_active: false, removed_at: new Date().toISOString() }
+        : d
+    );
   }
 
   public closeTableSession(tableId: string) {
@@ -342,8 +406,17 @@ class RestaurantStore {
     source: 'customer' | 'waiter';
     waiterId?: string;
     notes?: string;
+    idempotencyKey?: string;
     items: Array<{ itemId?: string; comboId?: string; quantity: number; notes?: string }>;
   }): { order: Order; items: OrderItem[] } {
+    if (params.idempotencyKey) {
+      const existing = (this.orders as any[]).find(o => o.idempotency_key === params.idempotencyKey);
+      if (existing) {
+        const existingLines = this.orderItems.filter(oi => oi.order_id === existing.id);
+        return { order: existing, items: existingLines };
+      }
+    }
+
     const table = this.getTableById(params.tableId);
     if (!table) throw new Error('Table not found');
 
@@ -369,7 +442,7 @@ class RestaurantStore {
           price_paise: item.price_paise, // strict server snapshot
           quantity: reqItem.quantity,
           dietary: item.dietary,
-          status: params.source === 'waiter' ? 'approved' : 'pending',
+          status: 'placed',
           notes: reqItem.notes || '',
           created_at: new Date().toISOString(),
         };
@@ -390,7 +463,7 @@ class RestaurantStore {
           price_paise: combo.price_paise, // strict server snapshot
           quantity: reqItem.quantity,
           dietary: combo.dietary,
-          status: params.source === 'waiter' ? 'approved' : 'pending',
+          status: 'placed',
           notes: reqItem.notes || '',
           created_at: new Date().toISOString(),
         };
@@ -398,15 +471,20 @@ class RestaurantStore {
       }
     }
 
-    const newOrder: Order = {
+    const threshold = this.settings.large_order_threshold_paise || 500000;
+    const isLargeOrder = totalPaise > threshold;
+
+    const newOrder: any = {
       id: orderId,
       order_number: newOrderNumber,
       table_id: params.tableId,
-      status: params.source === 'waiter' ? 'approved' : 'pending',
+      status: 'placed',
       source: params.source,
       waiter_id: params.waiterId,
       notes: params.notes || '',
       total_paise: totalPaise,
+      idempotency_key: params.idempotencyKey,
+      needs_confirmation: isLargeOrder,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };

@@ -50,10 +50,22 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [table, setTable] = useState<{ id: string; label: string } | null>(null);
   const [hasOpenSession, setHasOpenSession] = useState(false);
+  const [isJoined, setIsJoined] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<RawMenuItem[]>([]);
   const [combos, setCombos] = useState<RawCombo[]>([]);
   const [orders, setOrders] = useState<OrderDisplay[]>([]);
+
+  // Table code state
+  const [codeDigits, setCodeDigits] = useState(['', '', '', '']);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const digitInputRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -77,6 +89,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
       setTable(data.table);
       setHasOpenSession(Boolean(data.hasOpenSession));
+      setIsJoined(Boolean(data.isJoined));
       setCategories(data.categories || []);
       setItems(data.items || []);
       setCombos(data.combos || []);
@@ -91,14 +104,85 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
   useEffect(() => {
     fetchMenuData();
-    // Live polling every 5s for order updates (pending -> approved -> preparing -> ready -> served)
+    // Live polling every 5s for order updates
     const interval = setInterval(fetchMenuData, 5000);
     return () => clearInterval(interval);
   }, [fetchMenuData]);
 
+  // Code input handler
+  const handleDigitChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const newDigits = [...codeDigits];
+    newDigits[index] = digit;
+    setCodeDigits(newDigits);
+    setCodeError(null);
+
+    // Auto advance focus
+    if (digit && index < 3) {
+      digitInputRefs[index + 1].current?.focus();
+    }
+  };
+
+  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !codeDigits[index] && index > 0) {
+      digitInputRefs[index - 1].current?.focus();
+    }
+  };
+
+  const handleJoinTable = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const fullCode = codeDigits.join('');
+    if (fullCode.length !== 4) {
+      setCodeError('Please enter all 4 digits');
+      return;
+    }
+
+    setJoining(true);
+    setCodeError(null);
+
+    try {
+      const res = await fetch('/api/customer/table/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, code: fullCode }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setCodeError(data.error || 'That code is not right.');
+      } else {
+        setIsJoined(true);
+        setCodeError(null);
+        await fetchMenuData();
+      }
+    } catch (err: any) {
+      setCodeError(err.message || 'Failed to verify table code.');
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      const res = await fetch('/api/customer/order/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, orderId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to cancel order');
+      } else {
+        await fetchMenuData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error cancelling order');
+    }
+  };
+
   // Cart operations
   const handleAddItem = (item: RawMenuItem) => {
-    if (!hasOpenSession) return;
+    if (!hasOpenSession || !isJoined) return;
     setCart(prev => {
       const existing = prev.find(ci => ci.id === item.id && ci.type === 'item');
       if (existing) {
@@ -130,7 +214,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   };
 
   const handleAddCombo = (combo: RawCombo) => {
-    if (!hasOpenSession) return;
+    if (!hasOpenSession || !isJoined) return;
     setCart(prev => {
       const existing = prev.find(ci => ci.id === combo.id && ci.type === 'combo');
       if (existing) {
@@ -331,15 +415,65 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       <main className="py-4">
         {/* Read-Only Notice when table has NO open session */}
         {!hasOpenSession && (
-          <div className="mb-6 p-3.5 bg-paper-card border border-ink/20 rounded-sm text-center">
+          <div className="mb-6 p-4 bg-paper-card border border-ink/20 rounded-sm text-center">
             <p className="font-serif text-sm font-semibold text-ink">
               Ask the waiter to open your table to order.
+            </p>
+            <p className="text-xs text-ink-muted mt-1">
+              You can explore our full menu below in the meantime.
             </p>
           </div>
         )}
 
-        {/* Placed order status tracker (live updates: pending, approved, preparing, ready, served) */}
-        {orders.length > 0 && <OrderStatusBanner orders={orders} />}
+        {/* Table Code Verification when session is open but phone has not joined yet */}
+        {hasOpenSession && !isJoined && (
+          <div className="mb-6 p-5 sm:p-6 bg-paper-card border-2 border-chilli/60 rounded-sm text-center max-w-md mx-auto shadow-none">
+            <h2 className="font-serif text-base sm:text-lg font-bold text-ink mb-1">
+              Ask your waiter for the table code
+            </h2>
+            <p className="text-xs text-ink-muted mb-4">
+              Enter the 4-digit code shown on the waiter's tablet to start ordering from this table.
+            </p>
+
+            <form onSubmit={handleJoinTable} className="space-y-4">
+              <div className="flex justify-center gap-2 sm:gap-3">
+                {[0, 1, 2, 3].map(idx => (
+                  <input
+                    key={idx}
+                    ref={digitInputRefs[idx]}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={codeDigits[idx]}
+                    onChange={e => handleDigitChange(idx, e.target.value)}
+                    onKeyDown={e => handleDigitKeyDown(idx, e)}
+                    className="w-12 h-14 sm:w-14 sm:h-16 text-center font-mono text-2xl sm:text-3xl font-black bg-white border-2 border-rule rounded-sm focus:border-chilli focus:outline-none transition-colors text-ink"
+                  />
+                ))}
+              </div>
+
+              {codeError && (
+                <div className="p-2.5 bg-chilli-light/50 border border-chilli/40 rounded-sm text-xs font-semibold text-chilli">
+                  {codeError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={joining || codeDigits.join('').length !== 4}
+                className="w-full py-3 bg-chilli hover:bg-chilli-dark text-white font-serif text-sm font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {joining ? 'Connecting...' : 'Start ordering'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Placed order status tracker (live updates: placed -> preparing -> ready -> served) */}
+        {orders.length > 0 && (
+          <OrderStatusBanner orders={orders} onCancelOrder={handleCancelOrder} />
+        )}
 
         {/* Combos section (Full width or multi-column subgrid on desktop) */}
         {filteredCombos.length > 0 && (
@@ -356,7 +490,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
                     combo={combo}
                     quantityInCart={cartItem?.quantity || 0}
                     note={cartItem?.note || ''}
-                    readOnly={!hasOpenSession}
+                    readOnly={!hasOpenSession || !isJoined}
                     onAdd={() => handleAddCombo(combo)}
                     onRemove={() => handleRemoveCombo(combo.id)}
                     onUpdateNote={note => handleUpdateComboNote(combo.id, note)}
@@ -392,7 +526,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
                         item={item}
                         quantityInCart={cartItem?.quantity || 0}
                         note={cartItem?.note || ''}
-                        readOnly={!hasOpenSession}
+                        readOnly={!hasOpenSession || !isJoined}
                         onAdd={() => handleAddItem(item)}
                         onRemove={() => handleRemoveItem(item.id)}
                         onUpdateNote={note => handleUpdateItemNote(item.id, note)}
@@ -411,8 +545,8 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         </div>
       </main>
 
-      {/* Floating Bottom Cart Bar (active only when table has open session) */}
-      {hasOpenSession && (
+      {/* Floating Bottom Cart Bar (active only when table has open session AND device is joined) */}
+      {hasOpenSession && isJoined && (
         <CartBar
           itemCount={totalCartCount}
           totalPaise={totalCartPaise}
@@ -421,7 +555,7 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       )}
 
       {/* Order Review & Placement Drawer */}
-      {hasOpenSession && (
+      {hasOpenSession && isJoined && (
         <OrderDrawer
           isOpen={isReviewOpen}
           onClose={() => setIsReviewOpen(false)}

@@ -16,7 +16,7 @@ export async function GET() {
     const supabase = getServiceSupabase();
 
     if (supabase) {
-      // 1. Fetch approved and preparing orders (oldest first)
+      // 1. Fetch placed, preparing and ready orders (oldest first), excluding those needing waiter confirmation
       const { data: orders, error: oErr } = await (supabase as any)
         .from('orders')
         .select(`
@@ -24,6 +24,7 @@ export async function GET() {
           session_id,
           status,
           source,
+          needs_confirmation,
           created_at,
           approved_at,
           session:table_sessions (
@@ -43,7 +44,8 @@ export async function GET() {
             note
           )
         `)
-        .in('status', ['approved', 'preparing', 'ready'])
+        .in('status', ['placed', 'preparing', 'ready', 'approved'])
+        .or('needs_confirmation.is.null,needs_confirmation.eq.false')
         .order('created_at', { ascending: true });
 
       if (oErr) throw oErr;
@@ -102,7 +104,7 @@ export async function GET() {
     } else {
       // In-memory store
       const activeOrders = dbStore.orders
-        .filter(o => ['approved', 'preparing', 'ready'].includes(o.status))
+        .filter(o => ['placed', 'preparing', 'ready', 'approved'].includes(o.status) && !(o as any).needs_confirmation)
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
         .map(o => {
           const table = dbStore.getTableById(o.table_id);

@@ -2,13 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
+import { dbStore } from '@/lib/data/store';
 
 export const dynamic = 'force-dynamic';
 
 const settingsSchema = z.object({
   restaurant_name: z.string().min(1, 'Restaurant name is required'),
-  address: z.string().min(1, 'Address is required'),
-  phone: z.string().min(1, 'Phone is required'),
+  address: z.string().default(''),
+  phone: z.string().default(''),
+  tagline: z.string().optional().default(''),
+  about_text: z.string().optional().default(''),
+  opening_hours: z.string().optional().default(''),
+  maps_url: z.string().optional().default(''),
+  photos: z.array(z.string()).max(6).optional().default([]),
+  large_order_threshold_paise: z.number().int().min(0).default(500000),
   gstin: z.string().nullable().optional(),
   tax_percent: z.number().min(0).max(100).default(0),
   bill_footer: z.string().default('Thank you! Visit again.'),
@@ -18,9 +25,15 @@ const settingsSchema = z.object({
 const DEFAULT_SETTINGS = {
   id: 1,
   restaurant_name: 'Manasu Restaurant',
-  address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
-  phone: '+91 80 2520 1980',
-  gstin: '29AABCM8291Q1ZP',
+  address: '',
+  phone: '',
+  tagline: 'Pure Vegetarian South Indian Cuisine',
+  about_text: '',
+  opening_hours: '',
+  maps_url: '',
+  photos: [] as string[],
+  large_order_threshold_paise: 500000,
+  gstin: '',
   tax_percent: 0,
   bill_footer: 'Thank you for dining at Manasu! Visit again.',
   paper_width: '80mm',
@@ -59,7 +72,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { restaurant_name, address, phone, gstin, tax_percent, bill_footer, paper_width } = parse.data;
+    const {
+      restaurant_name,
+      address,
+      phone,
+      tagline,
+      about_text,
+      opening_hours,
+      maps_url,
+      photos,
+      large_order_threshold_paise,
+      gstin,
+      tax_percent,
+      bill_footer,
+      paper_width,
+    } = parse.data;
     const serviceSupabase = createServiceRoleClient();
 
     const { data, error } = await (serviceSupabase as any)
@@ -69,6 +96,12 @@ export async function POST(req: NextRequest) {
         restaurant_name,
         address,
         phone,
+        tagline: tagline || '',
+        about_text: about_text || '',
+        opening_hours: opening_hours || '',
+        maps_url: maps_url || '',
+        photos: photos || [],
+        large_order_threshold_paise: large_order_threshold_paise || 500000,
         gstin: gstin || null,
         tax_percent,
         bill_footer,
@@ -79,12 +112,18 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Sync in-memory store
+    dbStore.settings = { ...DEFAULT_SETTINGS, ...data };
+
     return NextResponse.json({ success: true, settings: data });
   } catch (err: any) {
     const body = await req.json().catch(() => ({}));
+    const updated = { ...DEFAULT_SETTINGS, ...body };
+    dbStore.settings = updated;
     return NextResponse.json({
       success: true,
-      settings: { ...DEFAULT_SETTINGS, ...body },
+      settings: updated,
     });
   }
 }

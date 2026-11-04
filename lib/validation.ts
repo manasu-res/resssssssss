@@ -23,12 +23,12 @@ export const waiterPlaceOrderSchema = z.object({
 
 export const updateOrderStatusSchema = z.object({
   orderId: z.string().min(1, 'Order ID is required'),
-  status: z.enum(['pending', 'approved', 'preparing', 'ready', 'served', 'cancelled']),
+  status: z.enum(['placed', 'pending', 'approved', 'preparing', 'ready', 'served', 'cancelled']),
 });
 
 export const updateItemStatusSchema = z.object({
   itemId: z.string().min(1, 'Order Item ID is required'),
-  status: z.enum(['pending', 'approved', 'preparing', 'ready', 'served', 'cancelled']),
+  status: z.enum(['placed', 'pending', 'approved', 'preparing', 'ready', 'served', 'cancelled']),
 });
 
 export const settleBillSchema = z.object({

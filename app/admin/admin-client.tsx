@@ -64,6 +64,12 @@ interface SettingsData {
   restaurant_name: string;
   address: string;
   phone: string;
+  tagline?: string;
+  about_text?: string;
+  opening_hours?: string;
+  maps_url?: string;
+  photos?: string[];
+  large_order_threshold_paise?: number;
   gstin: string | null;
   tax_percent: number;
   bill_footer: string;
@@ -121,13 +127,20 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
   // 5. Settings State
   const [settings, setSettings] = useState<SettingsData>({
     restaurant_name: 'Manasu Restaurant',
-    address: '100 Feet Road, Indiranagar, Bengaluru, Karnataka 560038',
-    phone: '+91 80 2520 1980',
-    gstin: '29AABCM8291Q1ZP',
+    address: '',
+    phone: '',
+    tagline: 'Pure Vegetarian South Indian Cuisine',
+    about_text: '',
+    opening_hours: '',
+    maps_url: '',
+    photos: [],
+    large_order_threshold_paise: 500000,
+    gstin: '',
     tax_percent: 0,
     bill_footer: 'Thank you for dining at Manasu! Visit again.',
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
 
   const appBaseUrl =
@@ -568,6 +581,52 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
   // ============================================================================
   // SETTINGS OPERATIONS
   // ============================================================================
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Photo size exceeds 2MB limit.');
+      return;
+    }
+    const currentPhotos = settings.photos || [];
+    if (currentPhotos.length >= 6) {
+      alert('Maximum 6 photos allowed.');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/admin/photos/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        setSettings(prev => ({
+          ...prev,
+          photos: [...(prev.photos || []), data.url],
+        }));
+      } else {
+        alert(data.error || 'Failed to upload photo');
+      }
+    } catch (err: any) {
+      alert('Failed to upload photo: ' + err.message);
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setSettings(prev => ({
+      ...prev,
+      photos: (prev.photos || []).filter((_, i) => i !== index),
+    }));
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingSettings(true);
@@ -1590,27 +1649,55 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
             )}
 
             <form onSubmit={handleSaveSettings} className="border border-rule bg-white p-5 rounded-sm space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                    Restaurant Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={settings.restaurant_name}
+                    onChange={e => setSettings({ ...settings, restaurant_name: e.target.value })}
+                    className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink font-serif font-bold text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                    Tagline / Cuisine (Homepage Header)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.tagline || ''}
+                    placeholder="e.g. Pure Vegetarian South Indian Cuisine"
+                    onChange={e => setSettings({ ...settings, tagline: e.target.value })}
+                    className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-                  Restaurant Name
+                  About Restaurant (Homepage "About" section)
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={settings.restaurant_name}
-                  onChange={e => setSettings({ ...settings, restaurant_name: e.target.value })}
-                  className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink font-serif font-bold text-sm"
+                <textarea
+                  rows={3}
+                  value={settings.about_text || ''}
+                  placeholder="A short paragraph introducing the restaurant, heritage, or specialities. Leave empty to hide the About section."
+                  onChange={e => setSettings({ ...settings, about_text: e.target.value })}
+                  className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink resize-y"
                 />
               </div>
 
               <div>
                 <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-                  Full Address (Appears on Receipt)
+                  Full Address (Appears on Receipt, Homepage & Map)
                 </label>
                 <input
                   type="text"
-                  required
-                  value={settings.address}
+                  value={settings.address || ''}
+                  placeholder="e.g. 12/1 Main Road, North Bengaluru, Karnataka 560064"
                   onChange={e => setSettings({ ...settings, address: e.target.value })}
                   className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink"
                 />
@@ -1619,15 +1706,65 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-                    Phone Number
+                    Phone Number (Customer & Receipts)
                   </label>
                   <input
                     type="text"
-                    required
-                    value={settings.phone}
+                    value={settings.phone || ''}
+                    placeholder="e.g. +91 98765 43210"
                     onChange={e => setSettings({ ...settings, phone: e.target.value })}
                     className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                    Google Maps Link (Get Directions button)
+                  </label>
+                  <input
+                    type="url"
+                    value={settings.maps_url || ''}
+                    placeholder="https://maps.app.goo.gl/... or Google Maps place URL"
+                    onChange={e => setSettings({ ...settings, maps_url: e.target.value })}
+                    className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink font-mono text-[11px]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                  Opening Hours (One line per day)
+                </label>
+                <textarea
+                  rows={4}
+                  value={settings.opening_hours || ''}
+                  placeholder={'Monday - Friday: 7:00 AM - 10:30 PM\nSaturday - Sunday: 7:00 AM - 11:00 PM'}
+                  onChange={e => setSettings({ ...settings, opening_hours: e.target.value })}
+                  className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white font-mono focus:outline-none focus:border-ink resize-y"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                    Large Order Hold Threshold (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="500"
+                    step="100"
+                    value={Math.round((settings.large_order_threshold_paise || 500000) / 100)}
+                    onChange={e =>
+                      setSettings({
+                        ...settings,
+                        large_order_threshold_paise: (parseInt(e.target.value) || 5000) * 100,
+                      })
+                    }
+                    className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white font-mono focus:outline-none focus:border-ink"
+                  />
+                  <span className="text-[10px] text-ink-muted mt-0.5 block">
+                    Orders over this amount require waiter confirmation before reaching the kitchen.
+                  </span>
                 </div>
 
                 <div>
@@ -1642,9 +1779,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                     className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white font-mono focus:outline-none focus:border-ink"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
                     Tax Percent (GST %)
@@ -1660,19 +1795,71 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                     className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white font-mono focus:outline-none focus:border-ink"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
-                    Bill Footer Note
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={settings.bill_footer}
-                    onChange={e => setSettings({ ...settings, bill_footer: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink"
-                  />
+              <div>
+                <label className="block text-xs uppercase tracking-wider font-semibold text-ink-muted mb-1">
+                  Bill Footer Note
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={settings.bill_footer}
+                  onChange={e => setSettings({ ...settings, bill_footer: e.target.value })}
+                  className="w-full text-xs px-3 py-2 border border-rule rounded-sm text-ink bg-white focus:outline-none focus:border-ink"
+                />
+              </div>
+
+              {/* Photos Upload Section */}
+              <div className="pt-2 border-t border-rule">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider font-bold text-ink">
+                      Restaurant Photos (Homepage Gallery)
+                    </label>
+                    <span className="text-[11px] text-ink-muted">
+                      Max 6 photos, up to 2MB each. If none uploaded, the photo section stays hidden.
+                    </span>
+                  </div>
+                  {(settings.photos || []).length < 6 && (
+                    <label className="cursor-pointer px-3 py-1.5 border border-ink bg-paper text-ink hover:bg-paper-subtle text-xs font-bold uppercase rounded-sm inline-flex items-center gap-1.5">
+                      <span>{uploadingPhoto ? 'Uploading...' : '+ Upload Photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingPhoto}
+                        onChange={handlePhotoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
                 </div>
+
+                {settings.photos && settings.photos.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 mt-2">
+                    {settings.photos.map((url, idx) => (
+                      <div key={idx} className="relative group border border-rule bg-paper-subtle aspect-square overflow-hidden rounded-sm">
+                        <img
+                          src={url}
+                          alt={`Restaurant photo ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute top-1 right-1 bg-ink/80 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-sm hover:bg-chilli"
+                          title="Remove photo"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-muted italic py-2">
+                    No photos uploaded yet.
+                  </p>
+                )}
               </div>
 
               <button

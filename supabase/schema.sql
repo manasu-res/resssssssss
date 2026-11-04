@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS public.table_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   table_id UUID NOT NULL REFERENCES public.dining_tables(id) ON DELETE CASCADE,
   status TEXT NOT NULL CHECK (status IN ('open', 'billed', 'closed')) DEFAULT 'open',
+  access_code VARCHAR(4),
+  code_attempts INT DEFAULT 0,
+  code_locked_until TIMESTAMPTZ,
   opened_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   opened_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at TIMESTAMPTZ
@@ -80,18 +83,37 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_single_open_session_per_table
   ON public.table_sessions (table_id)
   WHERE status = 'open';
 
+-- 7b. Table Session Devices (Tracks customer phones authorized at a table)
+CREATE TABLE IF NOT EXISTS public.table_session_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES public.table_sessions(id) ON DELETE CASCADE,
+  device_id TEXT NOT NULL,
+  device_name TEXT,
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  removed_at TIMESTAMPTZ,
+  is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_session_active
+  ON public.table_session_devices (session_id, device_id, is_active);
+
 -- 8. Orders
 CREATE TABLE IF NOT EXISTS public.orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES public.table_sessions(id) ON DELETE CASCADE,
   order_number INT,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'preparing', 'ready', 'served', 'cancelled')) DEFAULT 'pending',
+  status TEXT NOT NULL CHECK (status IN ('placed', 'preparing', 'ready', 'served', 'cancelled')) DEFAULT 'placed',
   source TEXT NOT NULL CHECK (source IN ('customer', 'waiter')),
   notes TEXT NOT NULL DEFAULT '',
+  idempotency_key TEXT UNIQUE,
+  needs_confirmation BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   approved_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   approved_at TIMESTAMPTZ,
   rejection_reason TEXT,
+  cancel_reason TEXT,
+  cancelled_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  cancelled_at TIMESTAMPTZ,
   served_at TIMESTAMPTZ
 );
 
@@ -135,6 +157,12 @@ CREATE TABLE IF NOT EXISTS public.settings (
   restaurant_name TEXT NOT NULL,
   address TEXT NOT NULL,
   phone TEXT NOT NULL,
+  tagline TEXT DEFAULT '',
+  about_text TEXT DEFAULT '',
+  opening_hours TEXT DEFAULT '',
+  maps_url TEXT DEFAULT '',
+  photos JSONB DEFAULT '[]'::jsonb,
+  large_order_threshold_paise INT DEFAULT 500000,
   gstin TEXT,
   tax_percent NUMERIC NOT NULL DEFAULT 0,
   bill_footer TEXT NOT NULL DEFAULT 'Thank you! Visit again.',

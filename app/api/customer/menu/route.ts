@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rate-limit';
 import { dbStore } from '@/lib/data/store';
 import { getServiceSupabase } from '@/lib/supabase/service';
+import { getTableJoinCookie } from '@/lib/auth/table-session-cookie';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'This QR is not valid. Please ask the waiter.' }, { status: 400 });
     }
 
+    const joinCookie = getTableJoinCookie();
     const supabase = getServiceSupabase();
 
     if (supabase) {
@@ -35,14 +37,41 @@ export async function GET(req: NextRequest) {
 
         if (diningTable && diningTable.is_enabled) {
           // 2. Check for active open session
-          const { data: openSession } = await (supabase as any)
+          const { data: rawSession } = await (supabase as any)
             .from('table_sessions')
-            .select('*')
+            .select('id, table_id, status, opened_at, code_locked_until')
             .eq('table_id', diningTable.id)
             .eq('status', 'open')
             .maybeSingle();
 
+          let openSession = rawSession;
+          if (openSession) {
+            // Check 4-hour auto-close rule
+            const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+            if (Date.now() - new Date(openSession.opened_at).getTime() > FOUR_HOURS_MS) {
+              await (supabase as any)
+                .from('table_sessions')
+                .update({ status: 'closed', closed_at: new Date().toISOString() })
+                .eq('id', openSession.id);
+              openSession = null;
+            }
+          }
+
           const hasOpenSession = Boolean(openSession);
+          let isJoined = false;
+
+          if (hasOpenSession && joinCookie && joinCookie.sessionId === openSession.id) {
+            const { data: dev } = await (supabase as any)
+              .from('table_session_devices')
+              .select('is_active, removed_at')
+              .eq('session_id', openSession.id)
+              .eq('device_id', joinCookie.deviceId)
+              .maybeSingle();
+
+            if (dev && dev.is_active && !dev.removed_at) {
+              isJoined = true;
+            }
+          }
 
           // 3. Fetch categories
           const { data: categories } = await (supabase as any)
@@ -89,6 +118,7 @@ export async function GET(req: NextRequest) {
                 id,
                 status,
                 source,
+                needs_confirmation,
                 created_at,
                 order_lines:order_lines (
                   id,
@@ -112,7 +142,8 @@ export async function GET(req: NextRequest) {
                 label: diningTable.label,
               },
               hasOpenSession,
-              session: openSession || null,
+              isJoined,
+              session: openSession ? { id: openSession.id, opened_at: openSession.opened_at } : null,
               categories: categories || [],
               items: items || [],
               combos: formattedCombos || [],
@@ -128,7 +159,6 @@ export async function GET(req: NextRequest) {
     // Reliable fallback: in-memory / local store
     let table = dbStore.getTableByToken(token);
     if (!table) {
-      // Also match by standard table prefix (e.g. tbl-manasu-03 -> Table 3)
       table = dbStore.tables.find(
         t => t.active_token === token || t.id === token || token.includes(t.id.replace('table-', ''))
       );
@@ -143,6 +173,14 @@ export async function GET(req: NextRequest) {
 
     const openSession = dbStore.getOpenSessionForTable(table.id);
     const hasOpenSession = Boolean(openSession);
+    let isJoined = false;
+
+    if (hasOpenSession && joinCookie && joinCookie.sessionId === openSession?.id) {
+      const dev = dbStore.devices.find(
+        d => d.session_id === openSession.id && d.device_id === joinCookie.deviceId && d.is_active
+      );
+      if (dev) isJoined = true;
+    }
 
     const categories = dbStore.categories.map(c => ({
       id: c.id,
@@ -182,15 +220,16 @@ export async function GET(req: NextRequest) {
             id: o.id,
             status: o.status,
             source: o.source,
+            needs_confirmation: (o as any).needs_confirmation || false,
             created_at: o.created_at,
             order_lines: dbStore.orderItems
-              .filter(i => i.order_id === o.id)
-              .map(i => ({
-                id: i.id,
-                name_snapshot: i.item_name,
-                price_snapshot: i.price_paise,
-                quantity: i.quantity,
-                note: i.notes || '',
+              .filter(oi => oi.order_id === o.id)
+              .map(oi => ({
+                id: oi.id,
+                name_snapshot: oi.item_name,
+                price_snapshot: oi.price_paise,
+                quantity: oi.quantity,
+                note: oi.notes,
               })),
           }))
       : [];
@@ -201,16 +240,17 @@ export async function GET(req: NextRequest) {
         label: table.table_number,
       },
       hasOpenSession,
-      session: openSession || null,
+      isJoined,
+      session: openSession ? { id: openSession.id, opened_at: openSession.opened_at } : null,
       categories,
       items,
       combos,
       orders: sessionOrders,
     });
   } catch (err: any) {
-    console.error('Customer menu error:', err);
+    console.error('Customer menu fetch error:', err);
     return NextResponse.json(
-      { error: err.message || 'Failed to load menu.' },
+      { error: err.message || 'Failed to fetch menu' },
       { status: 500 }
     );
   }

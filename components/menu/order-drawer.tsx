@@ -23,6 +23,7 @@ interface OrderDrawerProps {
   onUpdateQuantity: (id: string, delta: number) => void;
   onUpdateNote?: (id: string, note: string) => void;
   onOrderSuccess: (order: any) => void;
+  onRequestCodeEntry?: () => void;
 }
 
 export function OrderDrawer({
@@ -34,7 +35,9 @@ export function OrderDrawer({
   onUpdateQuantity,
   onUpdateNote,
   onOrderSuccess,
+  onRequestCodeEntry,
 }: OrderDrawerProps) {
+  const [step, setStep] = useState<'cart' | 'review'>('cart');
   const [orderNotes, setOrderNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -49,17 +52,21 @@ export function OrderDrawer({
     return sum + rawPrice * ci.quantity;
   }, 0);
 
-  const handlePlaceOrder = async () => {
+  const totalItemsCount = cart.reduce((sum, ci) => sum + ci.quantity, 0);
+
+  const handleConfirmAndSend = async () => {
     if (cart.length === 0 || submitting) return;
     setSubmitting(true);
     setErrorMessage('');
 
+    // Generate unique idempotency key so double-tap or retries never duplicate orders
+    const idempotencyKey = `idem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
     try {
       const payload = {
         token: tableToken,
-        tableToken: tableToken,
         orderNote: orderNotes.trim(),
-        notes: orderNotes.trim(),
+        idempotencyKey,
         items: cart.map(ci => ({
           itemId: ci.type === 'item' ? ci.id : undefined,
           comboId: ci.type === 'combo' ? ci.id : undefined,
@@ -77,14 +84,19 @@ export function OrderDrawer({
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.requiresCode && onRequestCodeEntry) {
+          onClose();
+          onRequestCodeEntry();
+          return;
+        }
         throw new Error(data.error || 'Failed to place order');
       }
 
       onOrderSuccess(data.order);
+      setStep('cart');
       onClose();
     } catch (err: any) {
       setErrorMessage(err.message || 'Something went wrong. Please ask the waiter.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -98,158 +110,221 @@ export function OrderDrawer({
         {/* Header */}
         <div className="px-4 py-3 border-b border-rule flex items-center justify-between">
           <div>
-            <h2 className="font-serif text-lg font-bold text-ink leading-tight">
-              Your order
-            </h2>
+            <h3 className="font-serif text-lg font-bold text-ink">
+              {step === 'cart' ? 'Your Cart' : 'Review Order'}
+            </h3>
             <p className="text-xs text-ink-muted">
-              {tableNumber} &middot; Sent to the waiter for confirmation
+              {tableNumber} &middot; {totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close order drawer"
-            className="w-10 h-10 flex items-center justify-center border border-rule/80 rounded-sm text-lg text-ink hover:bg-paper-subtle cursor-pointer"
+            className="w-8 h-8 flex items-center justify-center border border-rule rounded-sm hover:bg-paper-subtle text-ink font-bold"
+            aria-label="Close cart"
           >
             &times;
           </button>
         </div>
 
-        {/* Items List */}
-        <div className="p-4 overflow-y-auto space-y-3 flex-1">
-          {cart.length === 0 ? (
-            <p className="text-sm text-ink-muted py-6 text-center">
-              Your order is empty. Add items from the menu card.
-            </p>
-          ) : (
-            cart.map(ci => {
-              const name = ci.type === 'item' ? ci.item?.name : ci.combo?.name;
-              const rawPrice =
-                ci.type === 'item'
-                  ? ci.item?.price ?? ci.item?.price_paise ?? 0
-                  : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
-              const isVeg =
-                ci.type === 'item'
-                  ? ci.item?.is_veg ?? ci.item?.dietary === 'veg'
-                  : ci.combo?.is_veg ?? ci.combo?.dietary === 'veg';
-              const itemNote = ci.note || ci.notes || '';
+        {/* Error message */}
+        {errorMessage && (
+          <div className="mx-4 mt-3 p-3 bg-paper-card border border-chilli text-chilli text-xs rounded-sm">
+            {errorMessage}
+          </div>
+        )}
 
-              return (
-                <div key={ci.id} className="py-2.5 border-b border-rule/50 last:border-b-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <DietaryBadge type={isVeg ? 'veg' : 'non_veg'} size="sm" />
-                      <span className="text-sm font-medium text-ink break-words">
-                        {name}
+        {/* Content Area */}
+        {step === 'cart' ? (
+          /* STEP 1: CART SHEET */
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {cart.length === 0 ? (
+              <div className="py-12 text-center text-ink-muted text-xs">
+                Your cart is empty. Add items from the menu card.
+              </div>
+            ) : (
+              cart.map(ci => {
+                const isItem = ci.type === 'item';
+                const name = isItem ? ci.item?.name : ci.combo?.name;
+                const price =
+                  isItem
+                    ? ci.item?.price ?? ci.item?.price_paise ?? 0
+                    : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
+                const dietary =
+                  isItem
+                    ? ci.item?.dietary || (ci.item?.is_veg ? 'veg' : 'non_veg')
+                    : ci.combo?.dietary || (ci.combo?.is_veg ? 'veg' : 'non_veg');
+
+                return (
+                  <div key={ci.id} className="p-3 border border-rule/60 bg-white rounded-sm space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                        <div className="pt-0.5 shrink-0">
+                          <DietaryBadge type={dietary} size="sm" />
+                        </div>
+                        <span className="font-medium text-xs text-ink leading-tight">
+                          {name}
+                        </span>
+                      </div>
+
+                      <span className="font-semibold text-xs tabular-nums text-ink shrink-0">
+                        {formatRupees(price * ci.quantity)}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-semibold tabular-nums text-ink whitespace-nowrap">
-                        {formatRupees(rawPrice * ci.quantity)}
-                      </span>
-
-                      <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-8">
+                    <div className="flex items-center justify-between pt-1">
+                      {/* Quantity Controls */}
+                      <div className="inline-flex items-center border border-ink/30 rounded-sm bg-paper-subtle overflow-hidden h-7">
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, -1)}
-                          className="w-8 h-full flex items-center justify-center text-ink text-sm font-bold hover:bg-paper-subtle active:bg-paper-subtle"
-                          aria-label={`Decrease ${name}`}
+                          className="w-7 h-full flex items-center justify-center font-bold text-xs hover:bg-ink hover:text-white transition-colors"
+                          aria-label="Decrease quantity"
                         >
                           -
                         </button>
-                        <span className="w-6 text-center text-xs font-bold tabular-nums text-ink">
+                        <span className="w-7 text-center font-bold text-xs tabular-nums text-ink">
                           {ci.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => onUpdateQuantity(ci.id, 1)}
-                          className="w-8 h-full flex items-center justify-center text-ink text-sm font-bold hover:bg-paper-subtle active:bg-paper-subtle"
-                          aria-label={`Increase ${name}`}
+                          className="w-7 h-full flex items-center justify-center font-bold text-xs hover:bg-ink hover:text-white transition-colors"
+                          aria-label="Increase quantity"
                         >
                           +
                         </button>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Note for this item */}
-                  {itemNote ? (
-                    <div className="mt-1 pl-5 flex items-center justify-between text-[11px] text-ink-muted">
-                      <span className="italic">Note: {itemNote}</span>
-                      {onUpdateNote && (
-                        <button
-                          type="button"
-                          onClick={() => onUpdateNote(ci.id, '')}
-                          className="text-[10px] underline hover:text-ink"
-                        >
-                          Remove note
-                        </button>
-                      )}
-                    </div>
-                  ) : onUpdateNote ? (
-                    <div className="mt-1 pl-5">
                       <button
                         type="button"
-                        onClick={() => {
-                          const note = prompt('Add note for this item (e.g. less spicy):');
-                          if (note !== null) onUpdateNote(ci.id, note.trim());
-                        }}
-                        className="text-[11px] text-ink-muted underline decoration-dotted hover:text-ink"
+                        onClick={() => onUpdateQuantity(ci.id, -ci.quantity)}
+                        className="text-[11px] text-ink-muted hover:text-chilli underline"
                       >
-                        + Add item note
+                        Remove
                       </button>
                     </div>
-                  ) : null}
-                </div>
-              );
-            })
-          )}
 
-          {cart.length > 0 && (
-            <div className="pt-2">
-              <label htmlFor="order-drawer-notes" className="block text-xs uppercase tracking-wider text-ink-muted font-medium mb-1">
-                Special instructions for table (optional)
+                    {/* Note input per item */}
+                    {onUpdateNote && (
+                      <input
+                        type="text"
+                        value={ci.note || ''}
+                        onChange={e => onUpdateNote(ci.id, e.target.value)}
+                        placeholder="Add cooking instruction (e.g. less spicy, crisp)"
+                        className="w-full text-[11px] px-2 py-1 border border-rule rounded-sm focus:outline-none focus:border-ink bg-paper-subtle/40"
+                      />
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          /* STEP 2: REVIEW ORDER SCREEN */
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="p-3 bg-paper-card border border-rule rounded-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-muted">
+                  Ordering For
+                </span>
+                <p className="font-serif text-base font-bold text-ink">
+                  {tableNumber}
+                </p>
+              </div>
+              <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-sm">
+                Direct to kitchen
+              </span>
+            </div>
+
+            {/* Order Items Summary */}
+            <div className="border border-rule bg-white rounded-sm divide-y divide-rule/40 p-3 space-y-2">
+              <span className="block text-[10px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                Order Items Summary
+              </span>
+              {cart.map(ci => {
+                const isItem = ci.type === 'item';
+                const name = isItem ? ci.item?.name : ci.combo?.name;
+                const price =
+                  isItem
+                    ? ci.item?.price ?? ci.item?.price_paise ?? 0
+                    : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
+                return (
+                  <div key={ci.id} className="pt-2 flex justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-ink">{ci.quantity}x</span>{' '}
+                      <span className="font-medium text-ink">{name}</span>
+                      {ci.note && (
+                        <span className="block text-[10px] text-ink-muted italic pl-4">
+                          Note: {ci.note}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-ink tabular-nums">
+                      {formatRupees(price * ci.quantity)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* General Kitchen Notes */}
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                Optional note for kitchen
               </label>
               <input
-                id="order-drawer-notes"
                 type="text"
                 value={orderNotes}
                 onChange={e => setOrderNotes(e.target.value)}
-                placeholder="e.g. Please bring water glasses, less spicy"
-                maxLength={200}
-                className="w-full text-xs px-3 py-2 bg-white border border-rule rounded-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-chilli"
+                placeholder="e.g. Serve together, urgent, separate plates"
+                className="w-full text-xs px-3 py-2 border border-rule rounded-sm focus:outline-none focus:border-ink bg-white"
               />
             </div>
-          )}
+          </div>
+        )}
 
-          {errorMessage && (
-            <div className="p-2.5 bg-chilli-light border border-chilli text-chilli text-xs rounded-sm">
-              {errorMessage}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
+        {/* Footer Actions */}
         {cart.length > 0 && (
-          <div className="p-4 border-t border-rule bg-paper-subtle/50 space-y-3">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs uppercase tracking-wider text-ink-muted font-semibold">
-                Estimated Total
+          <div className="p-4 border-t border-rule bg-paper space-y-2.5 shrink-0">
+            <div className="flex items-center justify-between text-xs">
+              <span className="uppercase tracking-wider font-bold text-ink-muted">
+                Total Amount
               </span>
-              <span className="text-base font-bold tabular-nums text-ink">
+              <span className="font-serif text-lg font-bold text-ink tabular-nums">
                 {formatRupees(totalPaise)}
               </span>
             </div>
 
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={handlePlaceOrder}
-              className="w-full h-11 bg-chilli hover:bg-chilli-hover disabled:opacity-50 text-white text-sm font-semibold rounded-sm transition-colors flex items-center justify-center gap-2"
-            >
-              {submitting ? 'Placing order...' : 'Place order'}
-            </button>
+            {step === 'cart' ? (
+              <button
+                type="button"
+                onClick={() => setStep('review')}
+                className="w-full min-h-[48px] bg-chilli text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                Review order &rarr;
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={handleConfirmAndSend}
+                  className="w-full min-h-[48px] bg-chilli disabled:bg-chilli/60 text-white text-xs font-bold uppercase tracking-wider rounded-sm hover:bg-chilli-hover transition-colors cursor-pointer flex items-center justify-center"
+                >
+                  {submitting ? 'Sending to kitchen...' : 'Confirm and send to kitchen \u2192'}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setStep('cart')}
+                  className="w-full py-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-muted hover:text-ink text-center cursor-pointer"
+                >
+                  &larr; Back to edit items
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

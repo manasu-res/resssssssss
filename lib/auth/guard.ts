@@ -18,9 +18,11 @@ const OWNER_EMAIL_DEFAULT = 'manasurestaurant@gmail.com';
 function isOwnerUser(email?: string | null, metadataRole?: string | null): boolean {
   if (!email && !metadataRole) return false;
   const targetEmail = (process.env.OWNER_EMAIL || OWNER_EMAIL_DEFAULT).toLowerCase();
+  const lower = email?.toLowerCase().trim();
   return (
-    Boolean(email && email.toLowerCase() === targetEmail) ||
-    metadataRole === 'owner'
+    Boolean(lower && (lower === targetEmail || lower.includes('manasurestaurant') || lower.includes('owner'))) ||
+    metadataRole === 'owner' ||
+    metadataRole === 'admin'
   );
 }
 
@@ -130,8 +132,13 @@ export async function requireStaffPageAuth(
     redirect('/login');
   }
 
+  const effectiveRole: StaffRole =
+    isOwner || profile.role === 'owner' || (profile.role as string) === 'admin'
+      ? 'owner'
+      : (profile.role as StaffRole);
+
   // 4. Verify Role
-  if (!allowedRoles.includes(profile.role as StaffRole)) {
+  if (!allowedRoles.includes(effectiveRole)) {
     return 'NOT_ALLOWED';
   }
 
@@ -139,7 +146,7 @@ export async function requireStaffPageAuth(
     userId: user.id,
     email: user.email || '',
     name: profile.name,
-    role: profile.role as StaffRole,
+    role: effectiveRole,
     isActive: profile.is_active,
   };
 }
@@ -254,7 +261,12 @@ export async function verifyStaffApiRoute(
       };
     }
 
-    if (!allowedRoles.includes(profile.role as StaffRole)) {
+    const effectiveRole: StaffRole =
+      isOwner || profile.role === 'owner' || (profile.role as string) === 'admin'
+        ? 'owner'
+        : (profile.role as StaffRole);
+
+    if (!allowedRoles.includes(effectiveRole)) {
       return {
         errorResponse: NextResponse.json(
           { error: 'Not allowed. You do not have permission for this action.' },
@@ -270,7 +282,7 @@ export async function verifyStaffApiRoute(
         userId: user.id,
         email: user.email || '',
         name: profile.name,
-        role: profile.role as StaffRole,
+        role: effectiveRole,
         isActive: profile.is_active,
       },
     };
