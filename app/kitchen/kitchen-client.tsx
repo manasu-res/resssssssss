@@ -23,6 +23,7 @@ export interface KitchenOrder {
   id: string;
   order_number: string;
   table_label: string;
+  waiter_name?: string;
   status: 'placed' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
   source?: string;
   created_at: string;
@@ -332,16 +333,14 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
                       <span className="font-serif text-3xl sm:text-4xl font-black text-white tracking-wide block leading-none">
                         {order.table_label.toUpperCase()}
                       </span>
-                      <span className="text-xs font-mono text-neutral-400 mt-1 flex items-center gap-2 uppercase font-bold tracking-wider">
-                        <span>KOT #{order.order_number}</span>
-                        {order.source === 'customer' ? (
-                          <span className="bg-red-700 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
-                            Customer
-                          </span>
-                        ) : (
-                          <span>&middot; {order.source || 'STAFF'}</span>
-                        )}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        <span className="text-xs font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                          KOT #{order.order_number}
+                        </span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-neutral-800 text-amber-300 border border-neutral-700">
+                          Captain: {order.waiter_name || (order.source === 'customer' ? 'Customer' : 'Staff')}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="text-right shrink-0">

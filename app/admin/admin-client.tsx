@@ -141,6 +141,7 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
 
   const appBaseUrl =
@@ -647,6 +648,30 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
       setSettingsMsg('Network error while saving settings.');
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleResetTestData = async () => {
+    if (!confirm('Are you sure you want to clear all test orders, bills, and active sessions to start completely fresh for opening day? (Menu items and restaurant settings will NOT be touched).')) {
+      return;
+    }
+    if (!confirm('Please confirm once more: All test transactions and active table sessions will be cleared.')) {
+      return;
+    }
+    setResettingData(true);
+    try {
+      const res = await fetch('/api/admin/reset-data', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'All test data has been cleared. Ready for business!');
+        window.location.reload();
+      } else {
+        alert(data.error || 'Failed to reset test data.');
+      }
+    } catch (err: any) {
+      alert('Error resetting data: ' + err.message);
+    } finally {
+      setResettingData(false);
     }
   };
 
@@ -1870,6 +1895,24 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                 {savingSettings ? 'Saving...' : 'Save Settings'}
               </button>
             </form>
+
+            {/* Clean Slate / Reset Test Data for Opening Day */}
+            <div className="border border-chilli/30 bg-chilli/5 p-5 rounded-sm space-y-2 mt-8">
+              <h3 className="font-serif text-sm font-bold text-chilli uppercase tracking-wider">
+                Opening Day Clean Slate
+              </h3>
+              <p className="text-xs text-ink-muted">
+                Clear all test orders, test bills, and active table sessions to start with a fresh 0-order slate for live business. Your menu items, categories, staff accounts, and restaurant settings will not be touched.
+              </p>
+              <button
+                type="button"
+                disabled={resettingData}
+                onClick={handleResetTestData}
+                className="mt-2 h-9 px-4 bg-white border border-chilli text-chilli hover:bg-chilli hover:text-white text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer"
+              >
+                {resettingData ? 'Clearing Data...' : 'Clear All Test Orders & Bills'}
+              </button>
+            </div>
           </div>
         ) : tab === 'reports' ? (
           <AdminReportsView />

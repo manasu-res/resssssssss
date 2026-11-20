@@ -26,6 +26,7 @@ export async function GET() {
             status,
             source,
             created_at,
+            approved_by,
             approved_at,
             session:table_sessions (
               id,
@@ -48,7 +49,16 @@ export async function GET() {
           .order('created_at', { ascending: true });
 
         if (!oErr && orders) {
-          // 2. Fetch combos with items for indenting combo contents
+          // 2. Fetch profiles to resolve waiter names
+          const staffMap = new Map<string, string>();
+          try {
+            const { data: staffProfiles } = await (supabase as any)
+              .from('profiles')
+              .select('id, name');
+            (staffProfiles || []).forEach((p: any) => staffMap.set(p.id, p.name));
+          } catch {}
+
+          // 3. Fetch combos with items for indenting combo contents
           const { data: combos } = await (supabase as any)
             .from('combos')
             .select(`
@@ -69,6 +79,7 @@ export async function GET() {
             const rawLabel = (o.session?.table?.label || '').toString().trim();
             const cleanNum = rawLabel.replace(/^(table\s*)+/i, '').trim();
             const tableLabel = cleanNum ? `Table ${cleanNum}` : (rawLabel || 'Table');
+            const waiterName = o.approved_by ? staffMap.get(o.approved_by) : null;
 
             const lines = (o.order_lines || []).map((line: any) => {
               let comboItems: Array<{ name: string; quantity: number }> = [];
@@ -97,6 +108,7 @@ export async function GET() {
               id: o.id,
               order_number: o.id.slice(-4).toUpperCase(),
               table_label: tableLabel,
+              waiter_name: waiterName || (o.source === 'customer' ? 'Customer' : 'Floor Staff'),
               status: o.status,
               source: o.source,
               created_at: o.created_at,
@@ -154,6 +166,7 @@ export async function GET() {
           id: o.id,
           order_number: o.order_number ? `#${o.order_number}` : o.id.slice(-4).toUpperCase(),
           table_label: tableLabel,
+          waiter_name: (o as any).waiter_name || (o.source === 'customer' ? 'Customer' : 'Floor Staff'),
           status: o.status,
           source: o.source,
           created_at: o.created_at,

@@ -170,6 +170,7 @@ export async function POST(req: NextRequest) {
                   table_id: targetTable.id,
                   status: 'approved',
                   source: 'waiter',
+                  waiter_name: staff?.name || 'Floor Captain',
                   notes: notes || '',
                   total_paise: totalPaise,
                   created_at: newOrder.created_at || now,

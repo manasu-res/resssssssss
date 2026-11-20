@@ -545,6 +545,13 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       });
       if (res.ok) {
         setVoidingOrderId(null);
+        setTables(prev =>
+          prev.map(t => ({
+            ...t,
+            orders: t.orders.map(o => (o.id === orderId ? { ...o, status: 'cancelled' } : o)),
+            activeOrders: (t.activeOrders || []).filter(o => o.id !== orderId),
+          }))
+        );
         await fetchTables();
       } else {
         const data = await res.json();

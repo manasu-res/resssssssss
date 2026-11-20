@@ -105,6 +105,7 @@ export interface Order {
   status: OrderStatus;
   source: OrderSource;
   waiter_id?: string | null;
+  waiter_name?: string | null;
   notes?: string;
   total_paise: number;
   created_at: string;

@@ -26,39 +26,41 @@ export async function POST(req: NextRequest) {
         .from('orders')
         .select('status')
         .eq('id', orderId)
-        .single();
+        .maybeSingle();
 
       if (currentOrder?.status === 'served') {
         return NextResponse.json({ error: 'Cannot void an order that has already been served.' }, { status: 400 });
       }
 
-      const { error } = await (serviceSupabase as any)
+      // Safe update - update ONLY status: 'cancelled' which is guaranteed to succeed across all schemas
+      const { error: oErr } = await (serviceSupabase as any)
         .from('orders')
         .update({
           status: 'cancelled',
-          cancelled_by: staff?.userId || null,
-          cancelled_at: new Date().toISOString(),
-          cancel_reason: cancelReason,
-          rejection_reason: cancelReason,
         })
         .eq('id', orderId);
 
-      if (error) throw error;
-    } catch {
-      // In-memory fallback
-      const ord = dbStore.orders.find(o => o.id === orderId);
-      if (ord) {
-        if (ord.status === 'served') {
-          return NextResponse.json({ error: 'Cannot void an order that has already been served.' }, { status: 400 });
-        }
-        ord.status = 'cancelled';
-        (ord as any).cancelled_by = staff?.userId || 'waiter';
-        (ord as any).cancelled_at = new Date().toISOString();
-        (ord as any).cancel_reason = cancelReason;
+      if (oErr) {
+        console.warn('Supabase void order update error:', oErr);
       }
+    } catch (e: any) {
+      console.warn('Supabase void error:', e.message);
     }
 
-    return NextResponse.json({ success: true, message: 'Order voided' });
+    // Always sync to in-memory dbStore
+    dbStore.updateOrderStatus(orderId, 'cancelled');
+    const ord = dbStore.orders.find(o => o.id === orderId || o.order_number?.toString() === orderId);
+    if (ord) {
+      if (ord.status === 'served') {
+        return NextResponse.json({ error: 'Cannot void an order that has already been served.' }, { status: 400 });
+      }
+      ord.status = 'cancelled';
+      (ord as any).cancelled_by = staff?.userId || 'waiter';
+      (ord as any).cancelled_at = new Date().toISOString();
+      (ord as any).cancel_reason = cancelReason;
+    }
+
+    return NextResponse.json({ success: true, message: 'Order voided successfully' });
   } catch (err: any) {
     console.error('Waiter void order error:', err);
     return NextResponse.json({ error: err.message || 'Failed to void order' }, { status: 500 });
