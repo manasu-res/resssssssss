@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { menuItemSchema } from '@/lib/validation';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const { errorResponse } = await verifyStaffApiRoute(['owner']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && session.role !== 'owner') {
-      return NextResponse.json({ error: 'Owner access required' }, { status: 403 });
-    }
 
     const supabase = getServiceSupabase();
 
@@ -42,11 +41,10 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const { errorResponse } = await verifyStaffApiRoute(['owner']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && session.role !== 'owner') {
-      return NextResponse.json({ error: 'Owner access required' }, { status: 403 });
-    }
 
     const body = await req.json();
     const itemId = body.id; // optional if edit

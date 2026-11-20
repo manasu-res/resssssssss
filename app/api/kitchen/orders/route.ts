@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const { errorResponse } = await verifyStaffApiRoute(['owner', 'kitchen']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    // Allow kitchen and owner roles
-    if (session && !['owner', 'kitchen'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const supabase = getServiceSupabase();
     const allKitchenOrders: any[] = [];

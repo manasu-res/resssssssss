@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const { billId, reason } = await req.json();
     if (!billId || !reason) {
@@ -20,9 +19,9 @@ export async function POST(req: NextRequest) {
 
     logAudit({
       action: 'CANCEL_BILL',
-      actorId: session?.userId,
-      actorName: session?.fullName,
-      actorRole: session?.role,
+      actorId: staff?.userId,
+      actorName: staff?.name,
+      actorRole: staff?.role,
       targetId: `Bill #${billId}`,
       details: { reason },
     });
@@ -35,7 +34,7 @@ export async function POST(req: NextRequest) {
         .from('bills')
         .update({
           is_cancelled: true,
-          cancelled_by: session?.userId || null,
+          cancelled_by: staff?.userId || null,
           cancellation_reason: reason,
           cancelled_at: now,
         })
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
       }
 
       bill.is_cancelled = true;
-      bill.cancelled_by = session?.userId || 'staff';
+      bill.cancelled_by = staff?.userId || 'staff';
       bill.cancellation_reason = reason;
       bill.cancelled_at = now;
 

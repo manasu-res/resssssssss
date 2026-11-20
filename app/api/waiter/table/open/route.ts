@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const { tableId } = await req.json();
     if (!tableId) {
@@ -59,7 +58,7 @@ export async function POST(req: NextRequest) {
               status: 'open',
               access_code: newAccessCode,
               code_attempts: 0,
-              opened_by: session?.userId || null,
+              opened_by: staff?.userId || null,
               opened_at: new Date().toISOString(),
             })
             .select()

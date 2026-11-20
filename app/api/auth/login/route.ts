@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { staffLoginSchema } from '@/lib/validation';
+import { rateLimit } from '@/lib/rate-limit';
 import { dbStore } from '@/lib/data/store';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { StaffRole } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
+    const forwardedFor = req.headers.get('x-forwarded-for');
+    const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : '127.0.0.1';
+
+    const loginLimit = rateLimit(`login-ip:${ip}`, 10, 60);
+    if (!loginLimit.success) {
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please wait a minute before trying again.' },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const parse = staffLoginSchema.safeParse(body);
     if (!parse.success) {

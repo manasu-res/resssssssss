@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { z } from 'zod';
 
@@ -26,11 +26,10 @@ const waiterAddOrderSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const body = await req.json();
     const parse = waiterAddOrderSchema.safeParse(body);
@@ -60,7 +59,7 @@ export async function POST(req: NextRequest) {
             .insert({
               table_id: tableId,
               status: 'open',
-              opened_by: session?.userId || null,
+              opened_by: staff?.userId || null,
               opened_at: new Date().toISOString(),
             })
             .select()
@@ -144,7 +143,7 @@ export async function POST(req: NextRequest) {
                 session_id: openSession.id,
                 status: 'approved',
                 source: 'waiter',
-                approved_by: session?.userId || null,
+                approved_by: staff?.userId || null,
                 approved_at: now,
               })
               .select()
@@ -236,7 +235,7 @@ export async function POST(req: NextRequest) {
     const { order, items: createdItems } = dbStore.placeOrder({
       tableId,
       source: 'waiter',
-      waiterId: session?.userId,
+      waiterId: staff?.userId,
       notes: notes || '',
       items: items.map(i => ({
         itemId: i.itemId,

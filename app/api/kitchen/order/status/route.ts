@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateOrderStatusSchema } from '@/lib/validation';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { logAudit } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'kitchen', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'kitchen', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const body = await req.json();
     const parse = updateOrderStatusSchema.safeParse(body);
@@ -22,9 +21,9 @@ export async function POST(req: NextRequest) {
 
     logAudit({
       action: 'UPDATE_ORDER_STATUS',
-      actorId: session?.userId,
-      actorName: session?.fullName,
-      actorRole: session?.role,
+      actorId: staff?.userId,
+      actorName: staff?.name,
+      actorRole: staff?.role,
       targetId: `Order #${orderId}`,
       details: { status, origin: 'kitchen' },
     });

@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const body = await req.json();
     const { tableId, paymentMethod = 'upi', discountPaise = 0 } = body;
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
               payment_method: paymentMethod,
               gstin: settings?.gstin || null,
               status: 'paid',
-              created_by: session?.userId || null,
+              created_by: staff?.userId || null,
               paid_at: new Date().toISOString(),
             };
             if (discountPaise > 0) {
@@ -154,9 +153,9 @@ export async function POST(req: NextRequest) {
 
               logAudit({
                 action: 'SETTLE_BILL',
-                actorId: session?.userId,
-                actorName: session?.fullName,
-                actorRole: session?.role,
+                actorId: staff?.userId,
+                actorName: staff?.name,
+                actorRole: staff?.role,
                 targetId: `Bill #${billNoStr}`,
                 details: {
                   tableId,
@@ -211,7 +210,7 @@ export async function POST(req: NextRequest) {
       tableId,
       paymentMethod,
       discountPaise,
-      settledBy: session?.userId,
+      settledBy: staff?.userId,
     });
 
     // Close the table session and free the table
@@ -237,9 +236,9 @@ export async function POST(req: NextRequest) {
 
     logAudit({
       action: 'SETTLE_BILL',
-      actorId: session?.userId,
-      actorName: session?.fullName,
-      actorRole: session?.role,
+      actorId: staff?.userId,
+      actorName: staff?.name,
+      actorRole: staff?.role,
       targetId: `Bill #${bill.bill_number}`,
       details: {
         tableId,

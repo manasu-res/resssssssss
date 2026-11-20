@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { getActiveTableCode } from '@/lib/auth/table-codes';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const { errorResponse } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const supabase = getServiceSupabase();
 

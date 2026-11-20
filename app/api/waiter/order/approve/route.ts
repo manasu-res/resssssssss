@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbStore } from '@/lib/data/store';
-import { getServerStaffSession } from '@/lib/auth/session';
+import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { getServiceSupabase } from '@/lib/supabase/service';
 import { logAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const { errorResponse, staff } = await verifyStaffApiRoute(['owner', 'waiter']);
+  if (errorResponse) return errorResponse;
+
   try {
-    const session = await getServerStaffSession();
-    if (session && !['owner', 'waiter'].includes(session.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
 
     const body = await req.json();
     const { orderId, status, reason } = body;
@@ -32,9 +31,9 @@ export async function POST(req: NextRequest) {
 
     logAudit({
       action: auditAction,
-      actorId: session?.userId,
-      actorName: session?.fullName,
-      actorRole: session?.role,
+      actorId: staff?.userId,
+      actorName: staff?.name,
+      actorRole: staff?.role,
       targetId: `Order #${orderId}`,
       details: { status, reason: reason || null },
     });
@@ -45,11 +44,10 @@ export async function POST(req: NextRequest) {
       try {
         const updatePayload: any = {
           status,
-          updated_at: new Date().toISOString(),
         };
 
         if (status === 'approved') {
-          updatePayload.approved_by = session?.userId || null;
+          updatePayload.approved_by = staff?.userId || null;
           updatePayload.approved_at = new Date().toISOString();
         }
 
