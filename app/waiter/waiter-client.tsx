@@ -173,26 +173,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   const [pastBills, setPastBills] = useState<any[]>([]);
   const [loadingBills, setLoadingBills] = useState(false);
 
-  // Session Details (Access Code & Joined Devices)
-  const [sessionDetails, setSessionDetails] = useState<{
-    id: string;
-    accessCode: string;
-    remainingSeconds?: number;
-    devices: Array<{ id: string; deviceId: string; deviceName: string; joinedAt: string }>;
-  } | null>(null);
-  const prevDeviceCountRef = useRef<number>(0);
-
-  // 1-second countdown ticker for table code 5-minute rotation
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSessionDetails(prev => {
-        if (!prev || prev.remainingSeconds === undefined || prev.remainingSeconds <= 0) return prev;
-        return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Void order modal state
   const [voidingOrderId, setVoidingOrderId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('Customer request / cancelled');
@@ -370,23 +350,12 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       )
     );
     try {
-      const res = await fetch('/api/waiter/table/open', {
+      await fetch('/api/waiter/table/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId }),
       });
-      const data = await res.json();
-      if (data.session) {
-        if (data.session.access_code) {
-          setSessionDetails({
-            id: data.session.id,
-            accessCode: data.session.access_code,
-            devices: [],
-          });
-        }
-      }
       await fetchTables();
-      fetchSessionDetails(tableId, data.session?.id);
     } catch (err) {
       console.error('Error opening table:', err);
     }
@@ -406,23 +375,12 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     setIsBillingPreview(false);
     fetchMenu();
     try {
-      const res = await fetch('/api/waiter/table/open', {
+      await fetch('/api/waiter/table/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tableId }),
       });
-      const data = await res.json();
-      if (data.session) {
-        if (data.session.access_code) {
-          setSessionDetails({
-            id: data.session.id,
-            accessCode: data.session.access_code,
-            devices: [],
-          });
-        }
-      }
       await fetchTables();
-      fetchSessionDetails(tableId, data.session?.id);
     } catch (err) {
       console.error('Error opening table:', err);
     }
@@ -451,7 +409,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       )
     );
     setSelectedTableId(null);
-    setSessionDetails(null);
     setIsAddingItems(false);
     setIsBillingPreview(false);
     try {
@@ -463,76 +420,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
       await fetchTables();
     } catch (err) {
       console.error('Error vacating table:', err);
-    }
-  };
-
-  const fetchSessionDetails = useCallback(async (tableId: string, sessionId?: string) => {
-    try {
-      const res = await fetch(`/api/waiter/table/session?tableId=${encodeURIComponent(tableId)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.session) {
-          if (prevDeviceCountRef.current > 0 && (data.session.devices?.length || 0) > prevDeviceCountRef.current) {
-            playChime(); // chime on new phone joining
-          }
-          prevDeviceCountRef.current = data.session.devices?.length || 0;
-          setSessionDetails(data.session);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching session details:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selectedTable && selectedTable.state !== 'Free') {
-      fetchSessionDetails(selectedTable.id, selectedTable.session?.id);
-      const timer = setInterval(() => {
-        fetchSessionDetails(selectedTable.id, selectedTable.session?.id);
-      }, 4000);
-      return () => clearInterval(timer);
-    } else {
-      setSessionDetails(null);
-    }
-  }, [selectedTable, fetchSessionDetails]);
-
-  const handleRegenerateCode = async (sessionId?: string, tableId?: string) => {
-    const sId = sessionId || selectedTable?.session?.id || sessionDetails?.id;
-    if (!sId) {
-      if (tableId || selectedTable?.id) {
-        await handleOpenTable(tableId || selectedTable!.id);
-      }
-      return;
-    }
-    try {
-      const res = await fetch('/api/waiter/table/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'new_code', sessionId: sId }),
-      });
-      const data = await res.json();
-      if (res.ok && data.accessCode) {
-        setSessionDetails(prev => prev ? { ...prev, accessCode: data.accessCode, devices: [] } : { id: sId, accessCode: data.accessCode, devices: [] });
-        await fetchTables();
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to generate new code');
-    }
-  };
-
-  const handleRemoveDevice = async (sessionId: string, deviceId: string) => {
-    try {
-      await fetch('/api/waiter/table/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove_device', sessionId, deviceId }),
-      });
-      setSessionDetails(prev => prev ? {
-        ...prev,
-        devices: prev.devices.filter(d => d.deviceId !== deviceId && d.id !== deviceId),
-      } : null);
-    } catch (err: any) {
-      alert(err.message || 'Failed to remove device');
     }
   };
 
@@ -578,42 +465,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
     } catch (err: any) {
       alert(err.message || 'Error confirming order');
     }
-  };
-
-  const handlePrintTableSlip = (table: WaiterTable) => {
-    const code = sessionDetails?.accessCode || (table.session as any)?.access_code || '----';
-    const printWindow = window.open('', '_blank', 'width=380,height=500');
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Table Code - ${formatDisplayTable(table.table_number)}</title>
-          <style>
-            body { font-family: monospace; padding: 20px; text-align: center; }
-            h1 { margin: 0; font-size: 20px; }
-            .code { font-size: 42px; font-weight: bold; margin: 18px 0; letter-spacing: 6px; }
-            .meta { font-size: 12px; margin-bottom: 8px; color: #444; }
-            hr { border: none; border-top: 1px dashed #000; margin: 12px 0; }
-          </style>
-        </head>
-        <body>
-          <h1>MANASU RESTAURANT</h1>
-          <div class="meta">${formatDisplayTable(table.table_number).toUpperCase()}</div>
-          <hr/>
-          <div>TABLE ACCESS CODE</div>
-          <div class="code">${code}</div>
-          <div style="font-size: 12px;">Scan the QR code on your table and enter this code to order.</div>
-          <hr/>
-          <div class="meta">${new Date().toLocaleString()}</div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
   };
 
   // Order Approval & Status Actions
@@ -1716,86 +1567,6 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
                   {/* Active Orders List on this Table */}
                   {!isBillingPreview && (
                     <div className="space-y-4">
-                      {/* Table Access Code Card */}
-                      <div className="p-3.5 bg-paper-card border border-rule rounded-sm space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold uppercase tracking-widest text-ink">
-                            Table Access Code
-                          </span>
-                          <div className="flex gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handlePrintTableSlip(selectedTable)}
-                              className="text-xs px-2.5 py-1 bg-white border border-rule hover:bg-paper-subtle text-ink font-semibold rounded cursor-pointer"
-                            >
-                              Print table slip
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRegenerateCode(selectedTable.session?.id || sessionDetails?.id)}
-                              className="text-xs px-2.5 py-1 bg-white border border-rule hover:bg-paper-subtle text-chilli font-semibold rounded cursor-pointer"
-                            >
-                              New code
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="text-center py-1">
-                          {sessionDetails?.accessCode || (selectedTable.session as any)?.access_code ? (
-                            <>
-                              <span className="font-mono text-4xl font-black tracking-widest text-ink block">
-                                {sessionDetails?.accessCode || (selectedTable.session as any)?.access_code}
-                              </span>
-                              <span className="text-[10px] text-ink-muted block mt-0.5 font-medium">
-                                Changes every 5 min{typeof sessionDetails?.remainingSeconds === 'number' && sessionDetails.remainingSeconds > 0
-                                  ? ` (in ${Math.floor(sessionDetails.remainingSeconds / 60)}:${(sessionDetails.remainingSeconds % 60).toString().padStart(2, '0')})`
-                                  : ''}
-                              </span>
-                            </>
-                          ) : (
-                            <div className="py-2 space-y-1">
-                              <span className="text-xs text-ink-muted block">No code generated yet.</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRegenerateCode(selectedTable.session?.id, selectedTable.id)}
-                                className="px-3 py-1.5 bg-chilli text-white text-xs font-bold uppercase rounded cursor-pointer hover:bg-chilli-dark"
-                              >
-                                Generate Table Code
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Phones Joined List */}
-                        <div className="border-t border-rule/50 pt-2 space-y-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted block">
-                            Phones joined ({sessionDetails?.devices?.length || 0})
-                          </span>
-                          {!sessionDetails?.devices || sessionDetails.devices.length === 0 ? (
-                            <p className="text-[11px] text-ink-muted italic py-1">No customer phones joined yet.</p>
-                          ) : (
-                            sessionDetails.devices.map(dev => (
-                              <div
-                                key={dev.id}
-                                className="flex items-center justify-between text-xs py-1.5 px-2 bg-white border border-rule/60 rounded"
-                              >
-                                <div>
-                                  <span className="font-semibold text-ink">{dev.deviceName}</span>
-                                  <span className="text-[10px] text-ink-muted ml-2">{formatTimeAgo(dev.joinedAt)}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveDevice(sessionDetails.id, dev.deviceId || dev.id)}
-                                  className="text-[11px] text-chilli hover:underline font-bold cursor-pointer"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </div>
-
                       <span className="block text-xs uppercase tracking-wider font-bold text-ink-muted pt-1">
                         Table Orders ({selectedTable.orders.length})
                       </span>
