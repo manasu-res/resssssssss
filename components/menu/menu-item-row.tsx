@@ -56,13 +56,15 @@ export function MenuItemRow({
             {formatRupees(pricePaise)}
           </span>
 
-          {!readOnly && (
+          {!isAvailable && (
+            <span className="px-2 py-0.5 text-[10px] sm:text-[11px] font-medium border border-rule text-ink-muted bg-paper-subtle rounded-sm uppercase tracking-wider">
+              Sold out
+            </span>
+          )}
+
+          {!readOnly && isAvailable && (
             <>
-              {!isAvailable ? (
-                <span className="px-2 py-1 text-[11px] font-medium border border-rule text-ink-muted bg-paper-subtle rounded-sm uppercase tracking-wider">
-                  Sold out
-                </span>
-              ) : quantityInCart > 0 ? (
+              {quantityInCart > 0 ? (
                 <div className="inline-flex items-center border border-ink/30 rounded-sm bg-white overflow-hidden h-9 sm:h-7">
                   <button
                     type="button"

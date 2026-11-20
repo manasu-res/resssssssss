@@ -35,10 +35,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: order, error: oErr } = await (supabase as any)
           .from('orders')
-          .update({
-            status,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ status })
           .eq('id', orderId)
           .select()
           .maybeSingle();

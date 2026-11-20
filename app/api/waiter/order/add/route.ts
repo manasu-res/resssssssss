@@ -158,6 +158,43 @@ export async function POST(req: NextRequest) {
                 .insert(orderLines)
                 .select();
 
+              // Always sync to dbStore so in-memory and Supabase stay completely identical
+              try {
+                const targetTable = dbStore.getOrCreateTable(tableId);
+                const totalPaise = linesToInsert.reduce(
+                  (sum, l) => sum + (l.price_snapshot || 0) * (l.quantity || 1),
+                  0
+                );
+                dbStore.orders.unshift({
+                  id: newOrder.id,
+                  order_number: newOrder.order_number || Date.now() % 10000,
+                  table_id: targetTable.id,
+                  status: 'approved',
+                  source: 'waiter',
+                  notes: notes || '',
+                  total_paise: totalPaise,
+                  created_at: newOrder.created_at || now,
+                  updated_at: now,
+                });
+                for (const l of linesToInsert) {
+                  dbStore.orderItems.push({
+                    id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    order_id: newOrder.id,
+                    item_id: l.menu_item_id,
+                    combo_id: l.combo_id,
+                    item_name: l.name_snapshot,
+                    price_paise: l.price_snapshot,
+                    quantity: l.quantity,
+                    dietary: 'veg',
+                    status: 'approved',
+                    notes: l.note || '',
+                    created_at: now,
+                  });
+                }
+              } catch (syncErr) {
+                console.warn('Failed to sync waiter order to dbStore:', syncErr);
+              }
+
               return NextResponse.json({
                 success: true,
                 order: {
@@ -208,6 +245,7 @@ export async function POST(req: NextRequest) {
         notes: i.note,
       })),
     });
+    order.status = 'approved';
 
     return NextResponse.json({
       success: true,

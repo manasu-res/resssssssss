@@ -3,8 +3,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { MenuItemRow } from '@/components/menu/menu-item-row';
 import { ComboItemRow } from '@/components/menu/combo-item-row';
-import { CartBar } from '@/components/menu/cart-bar';
-import { OrderDrawer, CartItem } from '@/components/menu/order-drawer';
 import { OrderStatusBanner, OrderDisplay } from '@/components/menu/order-status-banner';
 import { DietaryBadge } from '@/components/ui/dietary-badge';
 
@@ -49,29 +47,10 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [table, setTable] = useState<{ id: string; label: string } | null>(null);
-  const [hasOpenSession, setHasOpenSession] = useState(false);
-  const [isJoined, setIsJoined] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<RawMenuItem[]>([]);
   const [combos, setCombos] = useState<RawCombo[]>([]);
   const [orders, setOrders] = useState<OrderDisplay[]>([]);
-
-  // Table code state
-  const [customerName, setCustomerName] = useState('');
-  const [joinedName, setJoinedName] = useState('');
-  const [codeDigits, setCodeDigits] = useState(['', '', '', '']);
-  const [codeError, setCodeError] = useState<string | null>(null);
-  const [joining, setJoining] = useState(false);
-  const digitInputRefs = [
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-    useRef<HTMLInputElement>(null),
-  ];
-
-  // Cart state
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
 
   // Filter state: Veg-only toggle
   const [vegOnly, setVegOnly] = useState(false);
@@ -79,17 +58,6 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
   // Active category scroll state
   const [activeTab, setActiveTab] = useState<string>('combos');
   const tabsContainerRef = useRef<HTMLDivElement>(null);
-
-  // Restore saved name
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('manasu_customer_name');
-      if (saved) {
-        setCustomerName(saved);
-        setJoinedName(saved);
-      }
-    } catch {}
-  }, []);
 
   const fetchMenuData = useCallback(async () => {
     try {
@@ -103,27 +71,6 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
       }
 
       setTable(data.table);
-      const open = Boolean(data.hasOpenSession);
-      setHasOpenSession(open);
-
-      if (!open) {
-        setIsJoined(false);
-        try {
-          localStorage.removeItem(`manasu_joined_${token}`);
-        } catch {}
-      } else {
-        const serverJoined = Boolean(data.isJoined);
-        let locallyJoined = false;
-        try {
-          const storedSession = localStorage.getItem(`manasu_joined_${token}`);
-          if (storedSession && (storedSession === data.session?.id || storedSession === 'true')) {
-            locallyJoined = true;
-          }
-        } catch {}
-
-        setIsJoined(serverJoined || locallyJoined);
-      }
-
       setCategories(data.categories || []);
       setItems(data.items || []);
       setCombos(data.combos || []);
@@ -138,180 +85,10 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
 
   useEffect(() => {
     fetchMenuData();
-    // Live polling every 5s for order updates
+    // Live polling every 5s for live order status updates
     const interval = setInterval(fetchMenuData, 5000);
     return () => clearInterval(interval);
   }, [fetchMenuData]);
-
-  // Code input handler
-  const handleDigitChange = (index: number, value: string) => {
-    const digit = value.replace(/\D/g, '').slice(-1);
-    const newDigits = [...codeDigits];
-    newDigits[index] = digit;
-    setCodeDigits(newDigits);
-    setCodeError(null);
-
-    // Auto advance focus
-    if (digit && index < 3) {
-      digitInputRefs[index + 1].current?.focus();
-    }
-  };
-
-  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !codeDigits[index] && index > 0) {
-      digitInputRefs[index - 1].current?.focus();
-    }
-  };
-
-  const handleJoinTable = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmedName = customerName.trim();
-    if (!trimmedName) {
-      setCodeError('Please enter your name');
-      return;
-    }
-    const fullCode = codeDigits.join('');
-    if (fullCode.length !== 4) {
-      setCodeError('Please enter all 4 digits of table code');
-      return;
-    }
-
-    setJoining(true);
-    setCodeError(null);
-
-    try {
-      const res = await fetch('/api/customer/table/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ token, code: fullCode, customerName: trimmedName }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setCodeError(data.error || 'That code is not right.');
-      } else {
-        setIsJoined(true);
-        setJoinedName(trimmedName);
-        try {
-          localStorage.setItem('manasu_customer_name', trimmedName);
-          localStorage.setItem(`manasu_joined_${token}`, data.sessionId || 'true');
-        } catch {}
-        setCodeError(null);
-        await fetchMenuData();
-      }
-    } catch (err: any) {
-      setCodeError(err.message || 'Failed to verify table code.');
-    } finally {
-      setJoining(false);
-    }
-  };
-
-  const handleCancelOrder = async (orderId: string) => {
-    try {
-      const res = await fetch('/api/customer/order/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ token, orderId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || 'Failed to cancel order');
-      } else {
-        await fetchMenuData();
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error cancelling order');
-    }
-  };
-
-  // Cart operations
-  const handleAddItem = (item: RawMenuItem) => {
-    if (!hasOpenSession || !isJoined) return;
-    setCart(prev => {
-      const existing = prev.find(ci => ci.id === item.id && ci.type === 'item');
-      if (existing) {
-        return prev.map(ci =>
-          ci.id === item.id && ci.type === 'item' ? { ...ci, quantity: ci.quantity + 1 } : ci
-        );
-      }
-      return [...prev, { id: item.id, type: 'item', item, quantity: 1, note: '' }];
-    });
-  };
-
-  const handleRemoveItem = (itemId: string) => {
-    setCart(prev => {
-      const existing = prev.find(ci => ci.id === itemId && ci.type === 'item');
-      if (!existing) return prev;
-      if (existing.quantity <= 1) {
-        return prev.filter(ci => !(ci.id === itemId && ci.type === 'item'));
-      }
-      return prev.map(ci =>
-        ci.id === itemId && ci.type === 'item' ? { ...ci, quantity: ci.quantity - 1 } : ci
-      );
-    });
-  };
-
-  const handleUpdateItemNote = (itemId: string, note: string) => {
-    setCart(prev =>
-      prev.map(ci => (ci.id === itemId && ci.type === 'item' ? { ...ci, note } : ci))
-    );
-  };
-
-  const handleAddCombo = (combo: RawCombo) => {
-    if (!hasOpenSession || !isJoined) return;
-    setCart(prev => {
-      const existing = prev.find(ci => ci.id === combo.id && ci.type === 'combo');
-      if (existing) {
-        return prev.map(ci =>
-          ci.id === combo.id && ci.type === 'combo' ? { ...ci, quantity: ci.quantity + 1 } : ci
-        );
-      }
-      return [...prev, { id: combo.id, type: 'combo', combo, quantity: 1, note: '' }];
-    });
-  };
-
-  const handleRemoveCombo = (comboId: string) => {
-    setCart(prev => {
-      const existing = prev.find(ci => ci.id === comboId && ci.type === 'combo');
-      if (!existing) return prev;
-      if (existing.quantity <= 1) {
-        return prev.filter(ci => !(ci.id === comboId && ci.type === 'combo'));
-      }
-      return prev.map(ci =>
-        ci.id === comboId && ci.type === 'combo' ? { ...ci, quantity: ci.quantity - 1 } : ci
-      );
-    });
-  };
-
-  const handleUpdateComboNote = (comboId: string, note: string) => {
-    setCart(prev =>
-      prev.map(ci => (ci.id === comboId && ci.type === 'combo' ? { ...ci, note } : ci))
-    );
-  };
-
-  const handleUpdateDrawerQuantity = (id: string, delta: number) => {
-    setCart(prev => {
-      const item = prev.find(ci => ci.id === id);
-      if (!item) return prev;
-      const nextQty = item.quantity + delta;
-      if (nextQty <= 0) {
-        return prev.filter(ci => ci.id !== id);
-      }
-      return prev.map(ci => (ci.id === id ? { ...ci, quantity: nextQty } : ci));
-    });
-  };
-
-  const handleUpdateDrawerNote = (id: string, note: string) => {
-    setCart(prev => prev.map(ci => (ci.id === id ? { ...ci, note } : ci)));
-  };
-
-  const handleOrderSuccess = (newOrder: any) => {
-    setCart([]);
-    setOrders(prev => [newOrder, ...prev.filter(o => o.id !== newOrder.id)]);
-    fetchMenuData();
-  };
 
   const scrollToSection = (sectionId: string) => {
     setActiveTab(sectionId);
@@ -323,15 +100,6 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
     }
   };
 
-  const totalCartCount = cart.reduce((sum, ci) => sum + ci.quantity, 0);
-  const totalCartPaise = cart.reduce((sum, ci) => {
-    const rawPrice =
-      ci.type === 'item'
-        ? ci.item?.price ?? ci.item?.price_paise ?? 0
-        : ci.combo?.price ?? ci.combo?.price_paise ?? 0;
-    return sum + rawPrice * ci.quantity;
-  }, 0);
-
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-paper text-ink">
@@ -342,77 +110,76 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
     );
   }
 
-  // Token unknown or table disabled
-  if (error || !table) {
+  if (error) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center p-6 bg-paper text-ink text-center">
-        <div className="w-full max-w-sm border border-rule p-6 bg-paper-card rounded-sm shadow-none">
-          <h2 className="font-serif text-xl font-bold text-ink mb-1">
-            Manasu
-          </h2>
-          <p className="text-[11px] uppercase tracking-widest text-ink-muted mb-4">
-            Restaurant &middot; Bengaluru
-          </p>
-          <div className="py-3 px-3 bg-paper border border-rule rounded-sm text-xs font-medium text-chilli">
-            {error || 'This QR is not valid. Please ask the waiter.'}
-          </div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-paper text-ink">
+        <div className="max-w-md w-full p-6 bg-paper-card border border-rule text-center rounded-sm">
+          <h1 className="font-serif text-2xl font-bold text-chilli mb-2">Notice</h1>
+          <p className="text-sm text-ink-muted mb-6">{error}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              fetchMenuData();
+            }}
+            className="w-full py-2.5 bg-ink text-paper text-xs uppercase font-semibold tracking-wider rounded-sm hover:bg-ink-light transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
   }
 
-  // Filter items and combos by veg-only toggle
-  const filteredCombos = combos.filter(c => {
-    if (!vegOnly) return true;
-    return c.is_veg !== undefined ? c.is_veg : c.dietary === 'veg';
-  });
+  const filteredCombos = vegOnly
+    ? combos.filter(c => (c.is_veg !== undefined ? c.is_veg : c.dietary === 'veg'))
+    : combos;
+
+  const rawTable = (table?.label || '').trim();
+  const cleanTableNum = rawTable.replace(/^(table\s*)+/i, '').trim();
+  const displayTable = cleanTableNum ? `Table ${cleanTableNum}` : (rawTable || 'Table');
 
   return (
-    <div className="min-h-screen bg-paper text-ink pb-28 w-full max-w-6xl 2xl:max-w-7xl mx-auto px-4 sm:px-6 md:px-8 border-x border-rule/30">
-      {/* Top Printed Header */}
-      <header className="pt-4 pb-3 border-b border-rule bg-paper sticky top-0 z-30">
-        <div className="flex items-start justify-between">
+    <div className="min-h-screen bg-paper text-ink selection:bg-chilli selection:text-white pb-16">
+      {/* Top Header */}
+      <header className="sticky top-0 z-30 bg-paper/95 backdrop-blur-none border-b border-rule">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
-            <h1 className="font-serif text-2xl sm:text-3xl font-bold tracking-tight text-ink leading-none">
+            <h1 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-ink">
               Manasu
             </h1>
-            <p className="text-[11px] sm:text-xs uppercase tracking-widest text-ink-muted mt-0.5">
+            <p className="text-[10px] sm:text-xs uppercase tracking-widest text-ink-muted font-medium">
               Restaurant &middot; Bengaluru
             </p>
           </div>
 
-          <div className="text-right">
-            <span className="inline-block px-3 py-1 bg-ink text-paper text-xs sm:text-sm font-semibold tracking-wide rounded-sm uppercase">
-              {table.label}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Table Number Pill */}
+            <span className="px-3 py-1 bg-ink text-paper text-xs font-bold uppercase tracking-wider rounded-sm">
+              {displayTable}
             </span>
+
+            {/* Veg Only Toggle */}
+            <button
+              type="button"
+              onClick={() => setVegOnly(prev => !prev)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-sm font-semibold transition-colors cursor-pointer ${
+                vegOnly
+                  ? 'border-emerald-700 bg-emerald-50 text-emerald-800'
+                  : 'border-rule bg-white text-ink-muted hover:text-ink'
+              }`}
+            >
+              <DietaryBadge type="veg" size="sm" />
+              <span>Veg only</span>
+            </button>
           </div>
         </div>
 
-        {/* Veg-only toggle */}
-        <div className="mt-3 flex items-center justify-between border-t border-rule/50 pt-2.5">
-          <span className="text-[11px] sm:text-xs font-medium text-ink-muted uppercase tracking-wider">
-            Dietary filter
-          </span>
-          <button
-            type="button"
-            onClick={() => setVegOnly(prev => !prev)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-sm transition-colors border cursor-pointer ${
-              vegOnly
-                ? 'bg-ink text-paper border-ink font-semibold'
-                : 'bg-white text-ink border-rule hover:bg-paper-subtle'
-            }`}
-            aria-pressed={vegOnly}
-          >
-            <DietaryBadge type="veg" size="sm" />
-            <span>Veg only</span>
-          </button>
-        </div>
-
-        {/* Category Navigation Tabs (sticky, scrolls to sections) */}
+        {/* Sticky Horizontal Categories Tab Bar */}
         <nav
           ref={tabsContainerRef}
           aria-label="Menu categories"
-          className="mt-3 -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8 flex items-center gap-2 overflow-x-auto border-t border-rule/50 pt-2 pb-0.5 no-scrollbar"
+          className="max-w-4xl mx-auto px-4 py-2 border-t border-rule/50 flex items-center gap-2 overflow-x-auto scrollbar-none scroll-smooth"
         >
           {filteredCombos.length > 0 && (
             <button
@@ -457,120 +224,47 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         </nav>
       </header>
 
-      {/* Main Menu Body: Responsive Multi-Column */}
-      <main className="py-4">
-        {/* Read-Only Notice when table has NO open session */}
-        {!hasOpenSession && (
-          <div className="mb-6 p-4 bg-paper-card border border-ink/20 rounded-sm text-center">
-            <p className="font-serif text-sm font-semibold text-ink">
-              Ask the waiter to open your table to order.
-            </p>
-            <p className="text-xs text-ink-muted mt-1">
-              You can explore our full menu below in the meantime.
-            </p>
-          </div>
-        )}
+      {/* Main Menu Body */}
+      <main className="max-w-4xl mx-auto px-4 py-5">
+        {/* Floor Waiter Notice Card */}
+        <div className="mb-6 p-4 sm:p-5 bg-paper-card border border-rule rounded-sm text-center">
+          <p className="font-serif text-base sm:text-lg font-bold text-ink">
+            Welcome to Manasu
+          </p>
+          <p className="text-xs sm:text-sm text-ink-muted mt-1 max-w-md mx-auto">
+            Please explore our traditional South Indian menu below. Your floor captain will take your order directly at your table.
+          </p>
+        </div>
 
-        {/* Table Code Verification when session is open but phone has not joined yet */}
-        {hasOpenSession && !isJoined && (
-          <div className="mb-6 p-5 sm:p-6 bg-paper-card border-2 border-chilli/60 rounded-sm text-center max-w-md mx-auto shadow-none">
-            <h2 className="font-serif text-base sm:text-lg font-bold text-ink mb-1">
-              Ask your waiter for the table code
-            </h2>
-            <p className="text-xs text-ink-muted mb-4">
-              Enter the 4-digit code shown on the waiter's tablet to start ordering from this table.
-            </p>
-
-            <form onSubmit={handleJoinTable} className="space-y-4">
-              <div className="text-left">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink mb-1">
-                  Your Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ramesh or Priya"
-                  value={customerName}
-                  onChange={e => {
-                    setCustomerName(e.target.value);
-                    setCodeError(null);
-                  }}
-                  className="w-full px-3 py-2 text-sm bg-white border border-rule rounded-sm focus:border-chilli focus:outline-none text-ink font-medium"
-                  maxLength={40}
-                  required
-                />
-              </div>
-
-              <div className="text-left">
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink mb-1">
-                  4-Digit Table Code
-                </label>
-                <div className="flex justify-center gap-2 sm:gap-3">
-                  {[0, 1, 2, 3].map(idx => (
-                    <input
-                      key={idx}
-                      ref={digitInputRefs[idx]}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={1}
-                      value={codeDigits[idx]}
-                      onChange={e => handleDigitChange(idx, e.target.value)}
-                      onKeyDown={e => handleDigitKeyDown(idx, e)}
-                      className="w-12 h-14 sm:w-14 sm:h-16 text-center font-mono text-2xl sm:text-3xl font-black bg-white border-2 border-rule rounded-sm focus:border-chilli focus:outline-none transition-colors text-ink"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {codeError && (
-                <div className="p-2.5 bg-chilli-light/50 border border-chilli/40 rounded-sm text-xs font-semibold text-chilli">
-                  {codeError}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={joining || codeDigits.join('').length !== 4 || !customerName.trim()}
-                className="w-full py-3 bg-chilli hover:bg-chilli-dark text-white font-serif text-sm font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {joining ? 'Connecting...' : 'Start ordering'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Placed order status tracker (live updates: placed -> preparing -> ready -> served) */}
+        {/* Live Order Status Tracker (shows live updates if waiter placed an order for this table) */}
         {orders.length > 0 && (
-          <OrderStatusBanner orders={orders} onCancelOrder={handleCancelOrder} />
+          <div className="mb-6">
+            <OrderStatusBanner orders={orders} />
+          </div>
         )}
 
-        {/* Combos section (Full width or multi-column subgrid on desktop) */}
+        {/* Combos section */}
         {filteredCombos.length > 0 && (
           <section id="section-combos" className="mb-8 pt-1 border-b border-rule/50 pb-6">
             <h2 className="font-serif text-xs sm:text-sm font-bold tracking-widest uppercase text-ink pb-1 border-b border-rule mb-3">
               Combos
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
-              {filteredCombos.map(combo => {
-                const cartItem = cart.find(ci => ci.id === combo.id && ci.type === 'combo');
-                return (
-                  <ComboItemRow
-                    key={combo.id}
-                    combo={combo}
-                    quantityInCart={cartItem?.quantity || 0}
-                    note={cartItem?.note || ''}
-                    readOnly={!hasOpenSession || !isJoined}
-                    onAdd={() => handleAddCombo(combo)}
-                    onRemove={() => handleRemoveCombo(combo.id)}
-                    onUpdateNote={note => handleUpdateComboNote(combo.id, note)}
-                  />
-                );
-              })}
+              {filteredCombos.map(combo => (
+                <ComboItemRow
+                  key={combo.id}
+                  combo={combo}
+                  quantityInCart={0}
+                  readOnly={true}
+                  onAdd={() => {}}
+                  onRemove={() => {}}
+                />
+              ))}
             </div>
           </section>
         )}
 
-        {/* Category Sections: Multi-column grid on md and above */}
+        {/* Category Sections: 2 columns on desktop, 1 on mobile */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 items-start">
           {categories.map(category => {
             const categoryItems = items.filter(item => {
@@ -587,21 +281,16 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
                   {category.name}
                 </h2>
                 <div>
-                  {categoryItems.map(item => {
-                    const cartItem = cart.find(ci => ci.id === item.id && ci.type === 'item');
-                    return (
-                      <MenuItemRow
-                        key={item.id}
-                        item={item}
-                        quantityInCart={cartItem?.quantity || 0}
-                        note={cartItem?.note || ''}
-                        readOnly={!hasOpenSession || !isJoined}
-                        onAdd={() => handleAddItem(item)}
-                        onRemove={() => handleRemoveItem(item.id)}
-                        onUpdateNote={note => handleUpdateItemNote(item.id, note)}
-                      />
-                    );
-                  })}
+                  {categoryItems.map(item => (
+                    <MenuItemRow
+                      key={item.id}
+                      item={item}
+                      quantityInCart={0}
+                      readOnly={true}
+                      onAdd={() => {}}
+                      onRemove={() => {}}
+                    />
+                  ))}
                 </div>
               </section>
             );
@@ -609,33 +298,13 @@ export default function CustomerMenuClient({ token }: CustomerMenuClientProps) {
         </div>
 
         {/* Printed Card Footer Note */}
-        <div className="text-center py-6 border-t border-rule/50 mt-10 text-[11px] text-ink-muted">
-          <p>Dishes prepared fresh to order &middot; Pure traditional flavours</p>
+        <div className="text-center py-8 border-t border-rule/50 mt-12 space-y-1.5 text-xs text-ink-muted">
+          <p className="font-serif font-bold text-ink">
+            To place an order or request assistance, please call your floor waiter.
+          </p>
+          <p>Dishes prepared fresh to order &middot; Authentic traditional flavours &middot; Indiranagar, Bengaluru</p>
         </div>
       </main>
-
-      {/* Floating Bottom Cart Bar (active only when table has open session AND device is joined) */}
-      {hasOpenSession && isJoined && (
-        <CartBar
-          itemCount={totalCartCount}
-          totalPaise={totalCartPaise}
-          onOpenReview={() => setIsReviewOpen(true)}
-        />
-      )}
-
-      {/* Order Review & Placement Drawer */}
-      {hasOpenSession && isJoined && (
-        <OrderDrawer
-          isOpen={isReviewOpen}
-          onClose={() => setIsReviewOpen(false)}
-          tableToken={token}
-          tableNumber={table.label}
-          cart={cart}
-          onUpdateQuantity={handleUpdateDrawerQuantity}
-          onUpdateNote={handleUpdateDrawerNote}
-          onOrderSuccess={handleOrderSuccess}
-        />
-      )}
     </div>
   );
 }

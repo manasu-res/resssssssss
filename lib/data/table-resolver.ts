@@ -78,11 +78,9 @@ export async function resolveDiningTable(rawToken: string): Promise<ResolvedTabl
       }
 
       if (table) {
-        const rawLabel = (table.label || `Table ${num || table.id}`).toString().trim();
-        const cleanNumber = rawLabel.replace(/^table\s*/i, '').trim();
-        const displayLabel = rawLabel.toLowerCase().startsWith('table')
-          ? rawLabel
-          : `Table ${rawLabel}`;
+        const rawLabel = (table.label || `${num || table.id}`).toString().trim();
+        const cleanNumber = rawLabel.replace(/^(table\s*)+/i, '').trim();
+        const displayLabel = cleanNumber ? `Table ${cleanNumber}` : 'Table';
 
         return {
           id: table.id,
@@ -113,10 +111,8 @@ export async function resolveDiningTable(rawToken: string): Promise<ResolvedTabl
 
   if (match) {
     const rawLabel = match.table_number.trim();
-    const cleanNumber = rawLabel.replace(/^table\s*/i, '').trim();
-    const displayLabel = rawLabel.toLowerCase().startsWith('table')
-      ? rawLabel
-      : `Table ${rawLabel}`;
+    const cleanNumber = rawLabel.replace(/^(table\s*)+/i, '').trim();
+    const displayLabel = cleanNumber ? `Table ${cleanNumber}` : 'Table';
 
     return {
       id: match.id,

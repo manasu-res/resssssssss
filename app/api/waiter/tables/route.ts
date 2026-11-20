@@ -113,10 +113,8 @@ export async function GET() {
           }
 
           const rawLabel = (tbl.label || '').toString().trim();
-          const cleanNum = rawLabel.replace(/^table\s*/i, '').trim();
-          const displayLabel = rawLabel.toLowerCase().startsWith('table')
-            ? rawLabel
-            : `Table ${rawLabel}`;
+          const cleanNum = rawLabel.replace(/^(table\s*)+/i, '').trim();
+          const displayLabel = cleanNum ? `Table ${cleanNum}` : 'Table';
 
           return {
             id: tbl.id,

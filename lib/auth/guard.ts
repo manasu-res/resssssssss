@@ -41,16 +41,16 @@ export async function requireStaffPageAuth(
     const staffSession = await getServerStaffSession();
     if (staffSession) {
       const effectiveRole: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
-      if (!allowedRoles.includes(effectiveRole)) {
-        return 'NOT_ALLOWED';
+      if (allowedRoles.includes(effectiveRole)) {
+        return {
+          userId: staffSession.userId,
+          email: staffSession.email,
+          name: staffSession.fullName,
+          role: effectiveRole,
+          isActive: true,
+        };
       }
-      return {
-        userId: staffSession.userId,
-        email: staffSession.email,
-        name: staffSession.fullName,
-        role: effectiveRole,
-        isActive: true,
-      };
+      // If session cookie role does not match allowedRoles, fall through to check Supabase auth
     }
   } catch {
     // Continue to Supabase check
@@ -167,25 +167,19 @@ export async function verifyStaffApiRoute(
       const staffSession = await getServerStaffSession();
       if (staffSession) {
         const effectiveRole: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
-        if (!allowedRoles.includes(effectiveRole)) {
+        if (allowedRoles.includes(effectiveRole)) {
           return {
-            errorResponse: NextResponse.json(
-              { error: 'Not allowed. You do not have permission for this action.' },
-              { status: 403 }
-            ),
-            staff: null,
+            errorResponse: null,
+            staff: {
+              userId: staffSession.userId,
+              email: staffSession.email,
+              name: staffSession.fullName,
+              role: effectiveRole,
+              isActive: true,
+            },
           };
         }
-        return {
-          errorResponse: null,
-          staff: {
-            userId: staffSession.userId,
-            email: staffSession.email,
-            name: staffSession.fullName,
-            role: effectiveRole,
-            isActive: true,
-          },
-        };
+        // If staffSession cookie role is not in allowedRoles, fall through to Supabase auth check
       }
     } catch {
       // Continue to Supabase check

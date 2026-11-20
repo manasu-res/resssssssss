@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { verifyStaffApiRoute } from '@/lib/auth/guard';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
+import { dbStore } from '@/lib/data/store';
 import type { StaffRole } from '@/lib/database.types';
 
 export const dynamic = 'force-dynamic';
@@ -169,6 +170,11 @@ export async function PATCH(req: NextRequest) {
 
     if (pErr) throw pErr;
 
+    const matchedStaff = dbStore.staff.find(s => s.id === userId);
+    if (matchedStaff) {
+      (matchedStaff as any).is_active = isActive;
+    }
+
     return NextResponse.json({ success: true, staff: updatedProfile });
   } catch (err: any) {
     console.error('Update staff status error:', err);
@@ -220,6 +226,9 @@ export async function DELETE(req: NextRequest) {
     } catch (authErr) {
       console.warn('Error deleting auth user:', authErr);
     }
+
+    // 3. Also update in-memory store
+    dbStore.staff = dbStore.staff.filter(s => s.id !== userId);
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

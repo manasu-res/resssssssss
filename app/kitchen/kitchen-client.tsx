@@ -23,7 +23,7 @@ export interface KitchenOrder {
   id: string;
   order_number: string;
   table_label: string;
-  status: 'placed' | 'approved' | 'preparing' | 'ready';
+  status: 'placed' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
   source?: string;
   created_at: string;
   approved_at?: string;
@@ -97,6 +97,10 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
       const rawOrders: KitchenOrder[] = data.orders || [];
       const loadedOrders = rawOrders.map(o => {
         const override = localKitchenStatusRef.current[o.id];
+        if (override && (o.status === override || o.status === 'served' || o.status === 'cancelled')) {
+          delete localKitchenStatusRef.current[o.id];
+          return o;
+        }
         return override ? { ...o, status: override } : o;
       });
 
@@ -164,6 +168,7 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
         body: JSON.stringify({ orderId, status }),
       });
       if (res.ok) {
+        delete localKitchenStatusRef.current[orderId];
         await fetchOrders();
       }
     } catch (err) {
@@ -206,7 +211,9 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
 
   // Filter orders: By default show active tickets (placed, approved & preparing), oldest first.
   const activeTickets = orders.filter(o =>
-    showReady ? true : o.status === 'placed' || o.status === 'approved' || o.status === 'preparing'
+    showReady
+      ? o.status !== 'served' && o.status !== 'cancelled'
+      : o.status === 'placed' || o.status === 'approved' || o.status === 'preparing'
   );
 
   return (

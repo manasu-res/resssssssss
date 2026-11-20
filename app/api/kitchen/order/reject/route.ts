@@ -25,25 +25,23 @@ export async function POST(req: NextRequest) {
         .from('orders')
         .update({
           status: 'cancelled',
-          cancelled_by: staff?.userId || null,
-          cancelled_at: new Date().toISOString(),
-          cancel_reason: cancelReason,
-          rejection_reason: cancelReason,
         })
         .eq('id', orderId)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
-    } catch {
-      // Fallback to store
-      const ord = dbStore.orders.find(o => o.id === orderId);
-      if (ord) {
-        ord.status = 'cancelled';
-        (ord as any).cancelled_by = staff?.userId || 'kitchen';
-        (ord as any).cancelled_at = new Date().toISOString();
-        (ord as any).cancel_reason = cancelReason;
-      }
+    } catch (e: any) {
+      console.warn('Supabase reject order error:', e.message);
+    }
+
+    // Always sync to store
+    const ord = dbStore.orders.find(o => o.id === orderId);
+    if (ord) {
+      ord.status = 'cancelled';
+      (ord as any).cancelled_by = staff?.userId || 'kitchen';
+      (ord as any).cancelled_at = new Date().toISOString();
+      (ord as any).cancel_reason = cancelReason;
     }
 
     return NextResponse.json({ success: true, message: 'Order rejected and cancelled' });
