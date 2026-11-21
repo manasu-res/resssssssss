@@ -101,6 +101,25 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
   const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState<string>('');
 
+  // Full Item Edit Modal State
+  const [editingItem, setEditingItem] = useState<MenuItemRow | null>(null);
+  const [editItemForm, setEditItemForm] = useState<{
+    name: string;
+    description: string;
+    priceRupees: string;
+    categoryId: string;
+    isVeg: boolean;
+    isAvailable: boolean;
+  }>({
+    name: '',
+    description: '',
+    priceRupees: '',
+    categoryId: '',
+    isVeg: true,
+    isAvailable: true,
+  });
+  const [savingEditItem, setSavingEditItem] = useState(false);
+
   // 2. Combos State
   const [combos, setCombos] = useState<ComboRow[]>([]);
   const [comboName, setComboName] = useState('');
@@ -336,6 +355,59 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
     } catch (err) {
       console.error('Error updating price:', err);
       fetchMenuData();
+    }
+  };
+
+  const handleOpenEditItem = (item: MenuItemRow) => {
+    setEditingItem(item);
+    setEditItemForm({
+      name: item.name,
+      description: item.description || '',
+      priceRupees: ((item.price || 0) / 100).toString(),
+      categoryId: item.category_id,
+      isVeg: item.is_veg,
+      isAvailable: item.is_available,
+    });
+  };
+
+  const handleSaveFullItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+
+    const priceRupees = parseFloat(editItemForm.priceRupees);
+    if (isNaN(priceRupees) || priceRupees < 0) {
+      alert('Please enter a valid price in rupees');
+      return;
+    }
+    const pricePaise = Math.round(priceRupees * 100);
+
+    setSavingEditItem(true);
+    try {
+      const res = await fetch('/api/admin/menu-items', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingItem.id,
+          name: editItemForm.name.trim(),
+          description: editItemForm.description.trim(),
+          pricePaise,
+          categoryId: editItemForm.categoryId,
+          isVeg: editItemForm.isVeg,
+          isAvailable: editItemForm.isAvailable,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to update item');
+      } else {
+        setEditingItem(null);
+        await fetchMenuData();
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error updating item');
+    } finally {
+      setSavingEditItem(false);
     }
   };
 
@@ -1055,10 +1127,10 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                             <td className="px-4 py-2.5 text-right space-x-2">
                               <button
                                 type="button"
-                                onClick={() => handleStartEditPrice(item)}
+                                onClick={() => handleOpenEditItem(item)}
                                 className="text-[11px] text-ink hover:underline font-semibold"
                               >
-                                Edit price
+                                Edit
                               </button>
                               <button
                                 type="button"
@@ -1148,6 +1220,157 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
                 );
               })}
             </div>
+
+            {/* EDIT ITEM MODAL */}
+            {editingItem && (
+              <div className="fixed inset-0 bg-ink/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+                <div className="bg-paper border border-rule shadow-2xl max-w-lg w-full rounded-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between border-b border-rule pb-3">
+                    <div>
+                      <h3 className="font-serif text-lg font-bold text-ink">
+                        Edit Dish
+                      </h3>
+                      <p className="text-xs text-ink-muted">
+                        Updates appear immediately across website, customer QR, and waiter ordering.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingItem(null)}
+                      className="text-ink-muted hover:text-ink text-sm font-bold p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveFullItem} className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                        Dish Name *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editItemForm.name}
+                        onChange={e => setEditItemForm(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full text-sm px-3 py-1.5 border border-rule rounded-sm bg-white text-ink focus:outline-none focus:border-ink"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                          Category *
+                        </label>
+                        <select
+                          value={editItemForm.categoryId}
+                          onChange={e => setEditItemForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                          className="w-full text-xs px-2.5 py-1.5 border border-rule rounded-sm bg-white text-ink focus:outline-none focus:border-ink"
+                        >
+                          {categories.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                          Price (₹) *
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          required
+                          value={editItemForm.priceRupees}
+                          onChange={e => setEditItemForm(prev => ({ ...prev, priceRupees: e.target.value }))}
+                          className="w-full text-sm font-mono px-3 py-1.5 border border-rule rounded-sm bg-white text-ink focus:outline-none focus:border-ink"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 items-center pt-1">
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1.5">
+                          Dietary Classification
+                        </label>
+                        <div className="flex items-center gap-4 text-xs font-semibold">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="dietary_class"
+                              checked={editItemForm.isVeg}
+                              onChange={() => setEditItemForm(prev => ({ ...prev, isVeg: true }))}
+                              className="accent-veg"
+                            />
+                            <DietaryBadge type="veg" size="sm" />
+                            <span>Veg</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="dietary_class"
+                              checked={!editItemForm.isVeg}
+                              onChange={() => setEditItemForm(prev => ({ ...prev, isVeg: false }))}
+                              className="accent-chilli"
+                            />
+                            <DietaryBadge type="non_veg" size="sm" />
+                            <span>Non-Veg</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1.5">
+                          Kitchen Status
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={editItemForm.isAvailable}
+                            onChange={e => setEditItemForm(prev => ({ ...prev, isAvailable: e.target.checked }))}
+                            className="rounded-xs accent-ink"
+                          />
+                          <span>{editItemForm.isAvailable ? 'In Stock (Available)' : 'Sold Out'}</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] uppercase tracking-wider font-bold text-ink-muted mb-1">
+                        Description / Ingredients
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editItemForm.description}
+                        onChange={e => setEditItemForm(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="e.g. Fragrant basmati rice layered with spiced marinated chicken, cooked on slow dum..."
+                        className="w-full text-xs px-3 py-2 border border-rule rounded-sm bg-white text-ink placeholder:text-ink-faint focus:outline-none focus:border-ink resize-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-rule">
+                      <button
+                        type="button"
+                        onClick={() => setEditingItem(null)}
+                        className="px-4 py-2 border border-rule text-xs font-semibold text-ink rounded-sm hover:bg-paper-subtle"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingEditItem}
+                        className="px-5 py-2 bg-ink text-paper text-xs font-bold rounded-sm hover:bg-black disabled:opacity-50"
+                      >
+                        {savingEditItem ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         ) : tab === 'combos' ? (
           /* ================================================================ */

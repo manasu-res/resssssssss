@@ -29,32 +29,32 @@ async function getHomepageData() {
         .order('sort_order', { ascending: true });
       if (catRows && catRows.length > 0) categories = catRows;
 
-      const { data: itemRows } = await (supabase as any)
+      const { data: itemRows, error: itemErr } = await (supabase as any)
         .from('menu_items')
-        .select('id, category_id, name, description, price, price_paise, dietary, is_veg, is_available, sort_order')
+        .select('id, category_id, name, description, price, is_veg, is_available, sort_order')
         .order('sort_order', { ascending: true });
-      if (itemRows && itemRows.length > 0) {
+      if (!itemErr && itemRows && itemRows.length > 0) {
         items = itemRows.map((i: any) => ({
           ...i,
-          price_paise: i.price ?? i.price_paise ?? 0,
-          dietary: i.dietary || (i.is_veg ? 'veg' : 'non_veg'),
+          price_paise: i.price ?? 0,
+          dietary: i.is_veg ? 'veg' : 'non_veg',
         }));
       }
 
-      const { data: comboRows } = await (supabase as any)
+      const { data: comboRows, error: comboErr } = await (supabase as any)
         .from('combos')
-        .select('id, name, description, price, price_paise, dietary, is_veg, is_available')
+        .select('id, name, description, price, is_veg, is_available')
         .order('created_at', { ascending: true });
 
       const { data: comboItemRows } = await (supabase as any)
         .from('combo_items')
         .select('combo_id, quantity, menu_item:menu_items(name)');
 
-      if (comboRows && comboRows.length > 0) {
+      if (!comboErr && comboRows && comboRows.length > 0) {
         combos = comboRows.map((c: any) => ({
           ...c,
-          price_paise: c.price ?? c.price_paise ?? 0,
-          dietary: c.dietary || (c.is_veg ? 'veg' : 'non_veg'),
+          price_paise: c.price ?? 0,
+          dietary: c.is_veg ? 'veg' : 'non_veg',
           items: (comboItemRows || [])
             .filter((ci: any) => ci.combo_id === c.id)
             .map((ci: any) => ({

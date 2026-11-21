@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export type StaffRole = 'owner' | 'waiter' | 'kitchen';
+export type StaffRole = 'owner' | 'manager' | 'waiter' | 'kitchen';
 export type TableSessionStatus = 'open' | 'billed' | 'closed';
 export type OrderStatus = 'pending' | 'approved' | 'preparing' | 'ready' | 'served' | 'cancelled';
 export type OrderSource = 'customer' | 'waiter';

@@ -2,8 +2,8 @@ export type DietaryType = 'veg' | 'non_veg';
 export type TableStatus = 'vacant' | 'occupied' | 'billed';
 export type OrderStatus = 'placed' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'pending' | 'approved';
 export type OrderSource = 'customer' | 'waiter';
-export type PaymentMethod = 'cash' | 'upi' | 'card';
-export type StaffRole = 'owner' | 'waiter' | 'kitchen';
+export type PaymentMethod = 'cash' | 'upi' | 'card' | 'razorpay';
+export type StaffRole = 'owner' | 'manager' | 'waiter' | 'kitchen';
 
 export interface RestaurantSettings {
   id: number;
@@ -18,8 +18,28 @@ export interface RestaurantSettings {
   large_order_threshold_paise?: number;
   gstin?: string | null;
   tax_percent: number;
+  service_charge_percent?: number;
   bill_footer: string;
   paper_width?: '80mm' | '58mm';
+}
+
+export interface MenuItemAddon {
+  id: string;
+  menu_item_id?: string;
+  name: string;
+  price_paise: number;
+  is_available: boolean;
+  sort_order: number;
+}
+
+export interface CustomerSession {
+  id: string;
+  table_session_id: string;
+  customer_name: string;
+  device_token: string;
+  is_active: boolean;
+  joined_at: string;
+  last_seen_at?: string;
 }
 
 export interface TableSessionDevice {
@@ -66,6 +86,8 @@ export interface MenuItem {
   dietary: DietaryType;
   is_available: boolean;
   sort_order: number;
+  image_url?: string | null;
+  addons?: MenuItemAddon[];
 }
 
 export interface ComboItemEntry {
@@ -84,6 +106,14 @@ export interface Combo {
   items?: ComboItemEntry[];
 }
 
+export interface OrderItemAddon {
+  id: string;
+  order_item_id: string;
+  addon_id?: string | null;
+  addon_name_snapshot: string;
+  addon_price_paise_snapshot: number;
+}
+
 export interface OrderItem {
   id: string;
   order_id: string;
@@ -95,6 +125,7 @@ export interface OrderItem {
   dietary: DietaryType;
   status: OrderStatus;
   notes?: string;
+  addons?: OrderItemAddon[];
   created_at: string;
 }
 
@@ -102,6 +133,9 @@ export interface Order {
   id: string;
   order_number: number;
   table_id: string;
+  table_session_id?: string;
+  customer_session_id?: string | null;
+  customer_name?: string | null;
   status: OrderStatus;
   source: OrderSource;
   waiter_id?: string | null;

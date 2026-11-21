@@ -18,7 +18,7 @@ export async function getServerStaffSession(): Promise<StaffAuthSession | null> 
 
   try {
     const session = JSON.parse(sessionCookie.value) as StaffAuthSession;
-    if (session && session.role && ['owner', 'waiter', 'kitchen'].includes(session.role)) {
+    if (session && session.role && ['owner', 'manager', 'waiter', 'kitchen'].includes(session.role)) {
       return session;
     }
   } catch {

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import { getServerStaffSession } from './session';
-import type { StaffRole } from '@/lib/database.types';
+import type { StaffRole } from '@/lib/types';
 
 export interface StaffAuthResult {
   userId: string;
@@ -46,12 +46,13 @@ export async function requireStaffPageAuth(
   try {
     const staffSession = await getServerStaffSession();
     if (staffSession) {
-      effectiveRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
+      const roleVal: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
+      effectiveRole = roleVal;
       authResult = {
         userId: staffSession.userId,
         email: staffSession.email,
         name: staffSession.fullName,
-        role: effectiveRole,
+        role: roleVal,
         isActive: true,
       };
     }

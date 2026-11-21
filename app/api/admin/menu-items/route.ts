@@ -110,7 +110,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, isAvailable, name, pricePaise, isVeg, description, sortOrder } = body;
+    const { id, isAvailable, name, pricePaise, isVeg, description, sortOrder, categoryId } = body;
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
     const serviceSupabase = createServiceRoleClient();
@@ -121,6 +121,7 @@ export async function PATCH(req: NextRequest) {
     if (isVeg !== undefined) updateData.is_veg = isVeg;
     if (description !== undefined) updateData.description = description;
     if (sortOrder !== undefined) updateData.sort_order = sortOrder;
+    if (categoryId !== undefined) updateData.category_id = categoryId;
 
     const { data, error } = await (serviceSupabase as any)
       .from('menu_items')
@@ -140,21 +141,12 @@ export async function PATCH(req: NextRequest) {
       if (isVeg !== undefined) memItem.dietary = isVeg ? 'veg' : 'non_veg';
       if (description !== undefined) memItem.description = description;
       if (sortOrder !== undefined) memItem.sort_order = sortOrder;
+      if (categoryId !== undefined) memItem.category_id = categoryId;
     }
 
     return NextResponse.json({ success: true, item: data });
   } catch (err: any) {
-    const body = await req.json().catch(() => ({}));
-    const item = dbStore.items.find(i => i.id === body.id);
-    if (item) {
-      if (body.isAvailable !== undefined) item.is_available = body.isAvailable;
-      if (body.name !== undefined) item.name = body.name;
-      if (body.pricePaise !== undefined) item.price_paise = body.pricePaise;
-      if (body.isVeg !== undefined) item.dietary = body.isVeg ? 'veg' : 'non_veg';
-      if (body.description !== undefined) item.description = body.description;
-      if (body.sortOrder !== undefined) item.sort_order = body.sortOrder;
-    }
-    return NextResponse.json({ success: true, item });
+    return NextResponse.json({ error: err.message || 'Failed to update item' }, { status: 500 });
   }
 }
 

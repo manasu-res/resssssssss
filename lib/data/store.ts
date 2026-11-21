@@ -55,17 +55,17 @@ class RestaurantStore {
   }> = [];
   public settings = {
     id: 1,
-    restaurant_name: 'Manasu Restaurant',
-    tagline: 'Pure Vegetarian South Indian Cuisine',
-    about_text: 'Authentic South Indian flavours served with devotion and tradition in Bengaluru.',
-    opening_hours: 'Monday - Sunday: 7:00 AM - 11:00 PM',
-    maps_url: '',
-    address: 'Bengaluru, Karnataka',
-    phone: '',
+    restaurant_name: 'Manasu restaurant',
+    tagline: '[DEMO DATA] South Indian Biryani',
+    about_text: '[DEMO DATA] Authentic South Indian dum biryanis, kebabs, and traditional meals in Bengaluru.',
+    opening_hours: 'Monday - Sunday: 11:30 AM - 11:00 PM',
+    maps_url: 'https://maps.google.com/?q=Bengaluru',
+    address: 'Indiranagar, Bengaluru, India',
+    phone: '+91 98450 12345',
     photos: [] as string[],
     large_order_threshold_paise: 500000,
-    gstin: '',
-    tax_percent: 0,
+    gstin: '29AABCM8291Q1ZP',
+    tax_percent: 5.0,
     bill_footer: 'Thank you for dining at Manasu! Visit again.',
     paper_width: '80mm' as '80mm' | '58mm',
   };
@@ -87,12 +87,210 @@ class RestaurantStore {
   }
 
   private seedDemoOrders() {
-    // Production store starts 100% clean for live business operations
-    this.orders = [];
-    this.orderItems = [];
-    this.bills = [];
-    this.sessions = [];
-    this.devices = [];
+    const now = new Date().toISOString();
+    // Demo session for Table T03 (multi-customer simultaneous QR order testing)
+    this.sessions = [
+      {
+        id: 'sess-demo-t03',
+        table_id: 'table-03',
+        status: 'open',
+        opened_at: now,
+      },
+      {
+        id: 'sess-demo-t07',
+        table_id: 'table-07',
+        status: 'open',
+        opened_at: now,
+      },
+    ];
+
+    // Customer devices/sessions for Table T03: Rahul, Arjun, Priya
+    this.devices = [
+      {
+        id: 'dev-demo-rahul',
+        session_id: 'sess-demo-t03',
+        device_id: 'dev-token-rahul',
+        device_name: 'Rahul',
+        joined_at: now,
+        is_active: true,
+      },
+      {
+        id: 'dev-demo-arjun',
+        session_id: 'sess-demo-t03',
+        device_id: 'dev-token-arjun',
+        device_name: 'Arjun',
+        joined_at: now,
+        is_active: true,
+      },
+      {
+        id: 'dev-demo-priya',
+        session_id: 'sess-demo-t03',
+        device_id: 'dev-token-priya',
+        device_name: 'Priya',
+        joined_at: now,
+        is_active: true,
+      },
+    ];
+
+    // Multi-customer demo orders on Table T03
+    this.orders = [
+      // 1. Rahul's order (placed)
+      {
+        id: 'ord-demo-101',
+        order_number: 101,
+        table_id: 'table-03',
+        table_session_id: 'sess-demo-t03',
+        customer_session_id: 'dev-demo-rahul',
+        customer_name: 'Rahul',
+        status: 'placed',
+        source: 'customer',
+        notes: '[DEMO DATA] Please serve biryani piping hot',
+        total_paise: 26000,
+        created_at: new Date(Date.now() - 12 * 60000).toISOString(),
+        updated_at: new Date(Date.now() - 12 * 60000).toISOString(),
+        items: [
+          {
+            id: 'item-demo-101-1',
+            order_id: 'ord-demo-101',
+            item_id: 'item-chicken-dum-biryani',
+            item_name: 'Chicken Dum Biryani',
+            price_paise: 22000,
+            quantity: 1,
+            dietary: 'non_veg',
+            status: 'placed',
+            created_at: new Date(Date.now() - 12 * 60000).toISOString(),
+          },
+          {
+            id: 'item-demo-101-2',
+            order_id: 'ord-demo-101',
+            item_id: 'item-coke',
+            item_name: 'Coke',
+            price_paise: 4000,
+            quantity: 1,
+            dietary: 'veg',
+            status: 'placed',
+            created_at: new Date(Date.now() - 12 * 60000).toISOString(),
+          },
+        ],
+      },
+      // 2. Arjun's order (preparing)
+      {
+        id: 'ord-demo-102',
+        order_number: 102,
+        table_id: 'table-03',
+        table_session_id: 'sess-demo-t03',
+        customer_session_id: 'dev-demo-arjun',
+        customer_name: 'Arjun',
+        status: 'preparing',
+        source: 'customer',
+        notes: '[DEMO DATA] Extra raita with biryani',
+        total_paise: 19000,
+        created_at: new Date(Date.now() - 9 * 60000).toISOString(),
+        updated_at: new Date(Date.now() - 5 * 60000).toISOString(),
+        items: [
+          {
+            id: 'item-demo-102-1',
+            order_id: 'ord-demo-102',
+            item_id: 'item-paneer-biryani',
+            item_name: 'Paneer Biryani',
+            price_paise: 19000,
+            quantity: 1,
+            dietary: 'veg',
+            status: 'preparing',
+            created_at: new Date(Date.now() - 9 * 60000).toISOString(),
+          },
+        ],
+      },
+      // 3. Priya's order (ready)
+      {
+        id: 'ord-demo-103',
+        order_number: 103,
+        table_id: 'table-03',
+        table_session_id: 'sess-demo-t03',
+        customer_session_id: 'dev-demo-priya',
+        customer_name: 'Priya',
+        status: 'ready',
+        source: 'customer',
+        notes: '[DEMO DATA] Quick starter',
+        total_paise: 21000,
+        created_at: new Date(Date.now() - 15 * 60000).toISOString(),
+        updated_at: new Date(Date.now() - 2 * 60000).toISOString(),
+        items: [
+          {
+            id: 'item-demo-103-1',
+            order_id: 'ord-demo-103',
+            item_id: 'item-chicken-65',
+            item_name: 'Chicken 65',
+            price_paise: 18000,
+            quantity: 1,
+            dietary: 'non_veg',
+            status: 'ready',
+            created_at: new Date(Date.now() - 15 * 60000).toISOString(),
+          },
+          {
+            id: 'item-demo-103-2',
+            order_id: 'ord-demo-103',
+            item_id: 'item-buttermilk',
+            item_name: 'Buttermilk',
+            price_paise: 3000,
+            quantity: 1,
+            dietary: 'veg',
+            status: 'ready',
+            created_at: new Date(Date.now() - 15 * 60000).toISOString(),
+          },
+        ],
+      },
+      // 4. Waiter Ramesh's order on Table T07 (served)
+      {
+        id: 'ord-demo-104',
+        order_number: 104,
+        table_id: 'table-07',
+        table_session_id: 'sess-demo-t07',
+        waiter_id: 'staff-waiter',
+        waiter_name: 'Ramesh Gowda',
+        status: 'served',
+        source: 'waiter',
+        notes: '[DEMO DATA] Dine-in guest order',
+        total_paise: 64000,
+        created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+        updated_at: new Date(Date.now() - 10 * 60000).toISOString(),
+        items: [
+          {
+            id: 'item-demo-104-1',
+            order_id: 'ord-demo-104',
+            item_id: 'item-mutton-dum-biryani',
+            item_name: 'Mutton Dum Biryani',
+            price_paise: 32000,
+            quantity: 1,
+            dietary: 'non_veg',
+            status: 'served',
+            created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+          },
+          {
+            id: 'item-demo-104-2',
+            order_id: 'ord-demo-104',
+            item_id: 'item-andhra-chicken-curry',
+            item_name: 'Andhra Chicken Curry',
+            price_paise: 24000,
+            quantity: 1,
+            dietary: 'non_veg',
+            status: 'served',
+            created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+          },
+          {
+            id: 'item-demo-104-3',
+            order_id: 'ord-demo-104',
+            item_id: 'item-butter-naan',
+            item_name: 'Butter Naan',
+            price_paise: 4000,
+            quantity: 2,
+            dietary: 'veg',
+            status: 'served',
+            created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+          },
+        ],
+      },
+    ];
   }
 
   // Table Helpers

@@ -89,27 +89,43 @@ export async function POST(req: NextRequest) {
     } = parse.data;
     const serviceSupabase = createServiceRoleClient();
 
-    const { data, error } = await (serviceSupabase as any)
+    const updatePayload: any = {
+      restaurant_name,
+      address,
+      phone,
+      tagline: tagline || '',
+      about_text: about_text || '',
+      opening_hours: opening_hours || '',
+      maps_url: maps_url || '',
+      photos: photos || [],
+      large_order_threshold_paise: large_order_threshold_paise || 500000,
+      gstin: gstin || null,
+      tax_percent,
+      bill_footer,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data, error } = await (serviceSupabase as any)
       .from('settings')
-      .upsert({
-        id: 1,
-        restaurant_name,
-        address,
-        phone,
-        tagline: tagline || '',
-        about_text: about_text || '',
-        opening_hours: opening_hours || '',
-        maps_url: maps_url || '',
-        photos: photos || [],
-        large_order_threshold_paise: large_order_threshold_paise || 500000,
-        gstin: gstin || null,
-        tax_percent,
-        bill_footer,
+      .update({
+        ...updatePayload,
         paper_width: paper_width || '80mm',
-        updated_at: new Date().toISOString(),
       })
+      .eq('id', 1)
       .select()
-      .single();
+      .maybeSingle();
+
+    if (error && error.code === 'PGRST204') {
+      // Column paper_width does not exist in schema, retry without it
+      const fallbackRes = await (serviceSupabase as any)
+        .from('settings')
+        .update(updatePayload)
+        .eq('id', 1)
+        .select()
+        .maybeSingle();
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
 
     if (error) throw error;
 
