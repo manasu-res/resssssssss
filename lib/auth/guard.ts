@@ -31,124 +31,142 @@ function isOwnerUser(email?: string | null, metadataRole?: string | null): boole
  * Checks session AND profile.
  * - If not logged in -> redirects to /login.
  * - If account inactive -> redirects to /login.
- * - If role not allowed -> returns 'NOT_ALLOWED'.
+ * - If user role does not match allowedRoles:
+ *     - If kitchen tries to visit /admin or /waiter -> redirects to /kitchen.
+ *     - If waiter tries to visit /admin or /kitchen -> redirects to /waiter.
+ *     - If owner is not allowed -> redirects to /admin.
  */
 export async function requireStaffPageAuth(
   allowedRoles: StaffRole[]
 ): Promise<StaffAuthResult | 'NOT_ALLOWED'> {
-  // 1. Check if staff session cookie exists (e.g. from /api/auth/login or fast switch)
+  let effectiveRole: StaffRole | null = null;
+  let authResult: StaffAuthResult | null = null;
+
+  // 1. Check if staff session cookie exists (e.g. from /api/auth/login)
   try {
     const staffSession = await getServerStaffSession();
     if (staffSession) {
-      const effectiveRole: StaffRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
-      if (allowedRoles.includes(effectiveRole)) {
-        return {
-          userId: staffSession.userId,
-          email: staffSession.email,
-          name: staffSession.fullName,
-          role: effectiveRole,
-          isActive: true,
-        };
-      }
-      // If session cookie role does not match allowedRoles, fall through to check Supabase auth
+      effectiveRole = isOwnerUser(staffSession.email) ? 'owner' : staffSession.role;
+      authResult = {
+        userId: staffSession.userId,
+        email: staffSession.email,
+        name: staffSession.fullName,
+        role: effectiveRole,
+        isActive: true,
+      };
     }
   } catch {
     // Continue to Supabase check
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const isRealSupabase =
-    url.startsWith('https://') &&
-    !url.includes('demo') &&
-    Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) &&
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.includes('demo');
+  // 2. If no session cookie, check Supabase Auth Session
+  if (!authResult) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const isRealSupabase =
+      url.startsWith('https://') &&
+      !url.includes('demo') &&
+      Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) &&
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.includes('demo');
 
-  if (!isRealSupabase) {
-    redirect('/login');
-  }
-
-  const supabase = createServerSupabaseClient();
-
-  // 2. Check Supabase Auth Session
-  let user: any = null;
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data?.user) {
-      user = data.user;
+    if (!isRealSupabase) {
+      redirect('/login');
     }
-  } catch {
-    // Failed to query user
-  }
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  const isOwner = isOwnerUser(user.email, user.user_metadata?.role);
-
-  // 3. Fetch Profile from database
-  let profile: { id: string; name: string; role: StaffRole; is_active: boolean } | null = null;
-  try {
-    const { data: profileData, error: profileError } = await (supabase as any)
-      .from('profiles')
-      .select('id, name, role, is_active')
-      .eq('id', user.id)
-      .single();
-
-    if (!profileError && profileData) {
-      profile = profileData as any;
-    }
-  } catch {
-    // Ignore error if database schema is initializing
-  }
-
-  // Fallback: If profile table is not initialized yet, but user is the owner
-  if (!profile && isOwner) {
-    profile = {
-      id: user.id,
-      name: user.user_metadata?.name || 'Owner',
-      role: 'owner',
-      is_active: true,
-    };
-
-    // Attempt to upsert profile in background via service role
+    const supabase = createServerSupabaseClient();
+    let user: any = null;
     try {
-      const serviceClient = createServiceRoleClient();
-      await (serviceClient as any).from('profiles').upsert({
+      const { data, error } = await supabase.auth.getUser();
+      if (!error && data?.user) {
+        user = data.user;
+      }
+    } catch {
+      // Failed to query user
+    }
+
+    if (!user) {
+      redirect('/login');
+    }
+
+    const isOwner = isOwnerUser(user.email, user.user_metadata?.role);
+
+    // 3. Fetch Profile from database
+    let profile: { id: string; name: string; role: StaffRole; is_active: boolean } | null = null;
+    try {
+      const { data: profileData, error: profileError } = await (supabase as any)
+        .from('profiles')
+        .select('id, name, role, is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (!profileError && profileData) {
+        profile = profileData as any;
+      }
+    } catch {
+      // Ignore error if database schema is initializing
+    }
+
+    // Fallback: If profile table is not initialized yet, but user is the owner
+    if (!profile && isOwner) {
+      profile = {
         id: user.id,
         name: user.user_metadata?.name || 'Owner',
         role: 'owner',
         is_active: true,
-      });
-    } catch {
-      // Ignore if table does not exist
+      };
+
+      try {
+        const serviceClient = createServiceRoleClient();
+        await (serviceClient as any).from('profiles').upsert({
+          id: user.id,
+          name: user.user_metadata?.name || 'Owner',
+          role: 'owner',
+          is_active: true,
+        });
+      } catch {
+        // Ignore if table does not exist
+      }
     }
+
+    if (!profile || !profile.is_active) {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      redirect('/login');
+    }
+
+    effectiveRole =
+      isOwner || profile.role === 'owner' || (profile.role as string) === 'admin'
+        ? 'owner'
+        : (profile.role as StaffRole);
+
+    authResult = {
+      userId: user.id,
+      email: user.email || '',
+      name: profile.name,
+      role: effectiveRole,
+      isActive: profile.is_active,
+    };
   }
 
-  if (!profile || !profile.is_active) {
-    try {
-      await supabase.auth.signOut();
-    } catch {}
+  // 4. Role enforcement & boundaries:
+  if (!authResult || !effectiveRole) {
     redirect('/login');
   }
 
-  const effectiveRole: StaffRole =
-    isOwner || profile.role === 'owner' || (profile.role as string) === 'admin'
-      ? 'owner'
-      : (profile.role as StaffRole);
-
-  // 4. Verify Role
+  // If user role is not permitted on this page, strictly bounce them back to their designated role portal
   if (!allowedRoles.includes(effectiveRole)) {
-    return 'NOT_ALLOWED';
+    if (effectiveRole === 'kitchen') {
+      redirect('/kitchen');
+    } else if (effectiveRole === 'waiter') {
+      redirect('/waiter');
+    } else if (effectiveRole === 'owner') {
+      redirect('/admin');
+    } else {
+      return 'NOT_ALLOWED';
+    }
   }
 
-  return {
-    userId: user.id,
-    email: user.email || '',
-    name: profile.name,
-    role: effectiveRole,
-    isActive: profile.is_active,
-  };
+  return authResult;
 }
 
 /**
@@ -178,8 +196,16 @@ export async function verifyStaffApiRoute(
               isActive: true,
             },
           };
+        } else {
+          // Strictly reject with 403 Forbidden - do NOT fall through to another session
+          return {
+            errorResponse: NextResponse.json(
+              { error: 'Forbidden: You do not have permission for this resource.' },
+              { status: 403 }
+            ),
+            staff: null,
+          };
         }
-        // If staffSession cookie role is not in allowedRoles, fall through to Supabase auth check
       }
     } catch {
       // Continue to Supabase check
@@ -263,7 +289,7 @@ export async function verifyStaffApiRoute(
     if (!allowedRoles.includes(effectiveRole)) {
       return {
         errorResponse: NextResponse.json(
-          { error: 'Not allowed. You do not have permission for this action.' },
+          { error: 'Forbidden: You do not have permission for this resource.' },
           { status: 403 }
         ),
         staff: null,

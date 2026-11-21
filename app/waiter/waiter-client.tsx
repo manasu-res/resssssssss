@@ -667,9 +667,12 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
   };
 
   const handleLogout = async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {}
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   // Calculate pending orders across all tables
@@ -736,6 +739,24 @@ export default function WaiterClient({ staff: currentStaff }: WaiterClientProps)
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Quick Switcher for Owner / Admin */}
+          {currentStaff.role === 'owner' && (
+            <div className="flex items-center gap-1.5 mr-1 border-r border-paper/30 pr-2">
+              <a
+                href="/admin"
+                className="min-h-[36px] px-2.5 bg-paper/10 hover:bg-paper/20 border border-paper/30 text-xs rounded-sm text-paper flex items-center justify-center font-bold uppercase tracking-wider"
+              >
+                Admin
+              </a>
+              <a
+                href="/kitchen"
+                className="min-h-[36px] px-2.5 bg-paper/10 hover:bg-paper/20 border border-paper/30 text-xs rounded-sm text-paper flex items-center justify-center font-bold uppercase tracking-wider"
+              >
+                Kitchen
+              </a>
+            </div>
+          )}
+
           {/* Past Bills Drawer Button */}
           <button
             type="button"

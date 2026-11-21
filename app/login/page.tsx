@@ -31,7 +31,7 @@ export default function LoginPage() {
       });
       const serverData = await serverLoginRes.json();
 
-      if (!serverLoginRes.ok && !isOwner) {
+      if (!serverLoginRes.ok) {
         throw new Error(serverData.error || 'Failed to sign in.');
       }
 
@@ -46,10 +46,7 @@ export default function LoginPage() {
         // Fall back to server session if client Supabase encounters an issue
       }
 
-      let dest = serverData.redirectTo;
-      if (!dest) {
-        dest = isOwner ? '/admin' : '/waiter';
-      }
+      const dest = serverData.redirectTo || (isOwner ? '/admin' : '/waiter');
 
       // 3. Hard navigation ensures fresh session cookies are sent in HTTP headers
       window.location.href = dest;

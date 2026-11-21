@@ -197,9 +197,12 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
   };
 
   const handleLogout = async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {}
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   const toggleFullscreen = () => {
@@ -235,6 +238,24 @@ export default function KitchenClient({ staff: currentStaff }: KitchenClientProp
 
         {/* Minimal Controls */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick Switcher for Owner / Admin */}
+          {currentStaff?.role === 'owner' && (
+            <div className="flex items-center gap-1.5 mr-1 border-r border-neutral-700 pr-2">
+              <a
+                href="/admin"
+                className="min-h-[44px] px-3 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-xs rounded-sm text-neutral-200 hover:text-white flex items-center justify-center font-bold uppercase tracking-wider"
+              >
+                Admin
+              </a>
+              <a
+                href="/waiter"
+                className="min-h-[44px] px-3 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-xs rounded-sm text-neutral-200 hover:text-white flex items-center justify-center font-bold uppercase tracking-wider"
+              >
+                Waiter POS
+              </a>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => setShowReady(prev => !prev)}

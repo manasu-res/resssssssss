@@ -7,6 +7,7 @@ import { formatRupees } from '@/lib/format';
 import { DietaryBadge } from '@/components/ui/dietary-badge';
 import type { StaffAuthResult } from '@/lib/auth/guard';
 import { AdminReportsView } from '@/components/admin/admin-reports-view';
+import { createClient } from '@/lib/supabase/client';
 
 type AdminTab = 'menu' | 'combos' | 'tables' | 'staff' | 'settings' | 'reports';
 
@@ -676,9 +677,12 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
   };
 
   const handleLogout = async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {}
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   return (
@@ -726,7 +730,19 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
             Admin &middot; <span className="font-sans font-normal text-xs text-ink-muted">{currentOwner.name}</span>
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <a
+            href="/waiter"
+            className="px-2 py-1 text-[11px] font-semibold border border-rule bg-white text-ink rounded-sm"
+          >
+            Waiter
+          </a>
+          <a
+            href="/kitchen"
+            className="px-2 py-1 text-[11px] font-semibold border border-rule bg-white text-ink rounded-sm"
+          >
+            Kitchen
+          </a>
           <button
             type="button"
             onClick={handleLogout}
@@ -823,6 +839,26 @@ export default function AdminClient({ staff: currentOwner, initialTab = 'menu' }
             Reports
           </button>
         </nav>
+
+        <div className="p-3 border-t border-rule space-y-1">
+          <span className="text-[10px] uppercase tracking-wider font-bold text-ink-muted px-1 block">
+            Switch View
+          </span>
+          <a
+            href="/waiter"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-sm text-ink hover:bg-paper-subtle border border-rule/60 bg-white transition-colors"
+          >
+            <span>Waiter POS</span>
+            <span className="text-[10px] font-mono text-ink-muted">&rarr;</span>
+          </a>
+          <a
+            href="/kitchen"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs font-semibold rounded-sm text-ink hover:bg-paper-subtle border border-rule/60 bg-white transition-colors"
+          >
+            <span>Kitchen Display</span>
+            <span className="text-[10px] font-mono text-ink-muted">&rarr;</span>
+          </a>
+        </div>
 
         <div className="p-3 border-t border-rule space-y-1.5">
           <button
